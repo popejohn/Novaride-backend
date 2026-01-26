@@ -1,6 +1,7 @@
 //import user model
 const userModel = require('../Schemas/user.schema');
 const riderModel = require('../Schemas/rider.mongoose.schema');
+const rideDetailsModel = require('../Schemas/rideDetails.mongoose.schema');
 const { getUserByPhone } = require('../Models/auth.models');
 
 //controller to get rider details
@@ -178,4 +179,41 @@ const updateRiderLocation = async (req, res) => {
     }
 };
 
-module.exports = { getRiderDetails, createRiderProfile, updateRiderLocation };
+
+
+//controller to get nearby drivers
+const getNearbyDrivers = async (req, res) => {
+    try {
+        const { lat, lng, maxDistance = 5000 } = req.query;
+
+        if (!lat || !lng) {
+            return res.status(400).json({ message: "Latitude and longitude are required" });
+        }
+
+        // Find drivers within the specified distance (in meters)
+        const drivers = await riderModel.find({
+            location: {
+                $near: {
+                    $geometry: {
+                        type: 'Point',
+                        coordinates: [parseFloat(lng), parseFloat(lat)]
+                    },
+                    $maxDistance: parseInt(maxDistance)
+                }
+            },
+            isAvailable: true,
+            isVerified: true
+        }).populate('riderInfo', 'firstname lastname profilePic');
+
+        return res.status(200).json({
+            message: "Nearby drivers fetched successfully",
+            drivers: drivers
+        });
+
+    } catch (error) {
+        console.error('Error fetching nearby drivers:', error);
+        return res.status(500).json({ message: "Server error", error: error.message });
+    }
+};
+
+module.exports = { getRiderDetails, createRiderProfile, updateRiderLocation, getNearbyDrivers };
