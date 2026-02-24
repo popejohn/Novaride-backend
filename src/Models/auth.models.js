@@ -68,4 +68,51 @@ const updateUserProfilePic = async (phone, profilePicUrl) => {
 };
 
 
-module.exports = { createUser, getUserByPhone, loginUser, verifyOtp, updateUserProfilePic };
+const updateUserProfile = async (phone, updateData) => {
+    try {
+        const user = await userModel.findOneAndUpdate(
+            { phone },
+            { $set: updateData },
+            { new: true }
+        );
+        if (!user) {
+            throw new Error('User not found');
+        }
+        const safeUser = { ...user._doc };
+        delete safeUser.password;
+        return safeUser;
+    } catch (error) {
+        throw new Error('Error updating user profile: ' + error.message);
+    }
+};
+
+
+const updatePassword = async (phone, newHashedPassword) => {
+    try {
+        const user = await userModel.findOneAndUpdate(
+            { phone },
+            { password: newHashedPassword },
+            { new: true }
+        );
+        return user;
+    } catch (error) {
+        throw new Error('Error updating password: ' + error.message);
+    }
+};
+
+const updateSmsProtection = async (phone, isEnabled) => {
+    try {
+        const user = await userModel.findOneAndUpdate(
+            { phone },
+            { isSmsProtectionEnabled: isEnabled },
+            { new: true }
+        );
+        const safeUser = { ...user._doc };
+        delete safeUser.password;
+        return safeUser;
+    } catch (error) {
+        throw new Error('Error updating SMS protection: ' + error.message);
+    }
+};
+
+module.exports = { createUser, getUserByPhone, loginUser, verifyOtp, updateUserProfilePic, updateUserProfile, updatePassword, updateSmsProtection };

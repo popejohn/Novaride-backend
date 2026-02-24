@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken')
 const bcrypt = require('bcryptjs')
-const { createUser, loginUser, getUserByPhone, updateUserProfilePic } = require('../Models/auth.models')
+const { createUser, loginUser, getUserByPhone, updateUserProfilePic, updateUserProfile, updatePassword, updateSmsProtection } = require('../Models/auth.models')
 const { errorResponse, successResponse } = require('../Utils/responseHelper')
 const multer = require('multer');
 const cloudinary = require('../Configs/cloudinary');
@@ -17,7 +17,7 @@ const registerUser = async (req, res) => {
     try {
         const { firstname, lastname, phone, password, role } = req.validatedUserData;
         console.log(req.validatedUserData);
-        
+
         // Normalize role to an array to support multiple roles
         const roles = Array.isArray(role) ? role : (role ? [role] : []);
 
@@ -69,7 +69,7 @@ const loginUserController = async (req, res) => {
         const token = jwt.sign(
             { id: user._id, phone: user.phone, role: user.role },
             process.env.JWT_SECRET,
-            { expiresIn: "30m" }
+            { expiresIn: "1h" }
         );
 
         // Generate OTP
@@ -87,7 +87,7 @@ const loginUserController = async (req, res) => {
         // if (!published) {
         //     return errorResponse(res, 500, "Failed to queue OTP job");
         // }
-       
+
 
         // Store OTP in database
         // const otpEntry = new otpModel({
@@ -98,7 +98,7 @@ const loginUserController = async (req, res) => {
         // if (!otpEntry) {
         //     return errorResponse(res, 500, "Failed to store OTP");
         // }
-        const respData = {user, token: token};
+        const respData = { user, token: token };
         return successResponse(res, 200, "Login successful", respData);
     } catch (error) {
         console.error('Error logging in user:', error);
@@ -106,7 +106,7 @@ const loginUserController = async (req, res) => {
     }
 };
 
-const authenticateUser = async(req, res) => {
+const authenticateUser = async (req, res) => {
     try {
         const user = req.user;
         if (!user) {
@@ -114,7 +114,7 @@ const authenticateUser = async(req, res) => {
         }
         const userData = await getUserByPhone(user.phone);
         console.log(userData);
-        
+
         if (!userData) {
             return errorResponse(res, 404, 'User not found');
         }
@@ -172,8 +172,81 @@ const uploadProfilePic = async (req, res) => {
     }
 };
 
+const updateProfile = async (req, res) => {
+    try {
+        const user = req.user;
+        if (!user) {
+            return errorResponse(res, 401, 'User not authenticated');
+        }
+
+        const { firstname, lastname, phone, dateOfBirth, address, notificationSettings, privacySettings } = req.body;
+
+        // Prepare update data
+        const updateData = {};
+        if (firstname) updateData.firstname = firstname;
+        if (lastname) updateData.lastname = lastname;
+        if (phone) updateData.phone = phone;
+        if (dateOfBirth) updateData.dateOfBirth = dateOfBirth;
+        if (address) updateData.address = address;
+        if (notificationSettings) updateData.notificationSettings = notificationSettings;
+        if (privacySettings) updateData.privacySettings = privacySettings;
+
+        const updatedUser = await updateUserProfile(user.phone, updateData);
+
+        return successResponse(res, 200, 'Profile updated successfully', updatedUser);
+    } catch (error) {
+        console.error('Error updating profile:', error);
+        return errorResponse(res, 500, 'Internal server error');
+    }
+};
+
+const changePassword = async (req, res) => {
+    try {
+        const user = req.user;
+        if (!user) {
+            return errorResponse(res, 401, 'User not authenticated');
+        }
+
+        const { currentPassword, newPassword } = req.body;
+        if (!currentPassword || !newPassword) {
+            return errorResponse(res, 400, 'Current and new password are required');
+        }
+
+        const userData = await getUserByPhone(user.phone);
+        const isPasswordValid = await bcrypt.compare(currentPassword, userData.password);
+        if (!isPasswordValid) {
+            return errorResponse(res, 401, 'Invalid current password');
+        }
+
+        const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+        await updatePassword(user.phone, hashedNewPassword);
+
+        return successResponse(res, 200, 'Password changed successfully');
+    } catch (error) {
+        console.error('Error changing password:', error);
+        return errorResponse(res, 500, 'Internal server error');
+    }
+};
+
+const updateSecuritySettings = async (req, res) => {
+    try {
+        const user = req.user;
+        if (!user) {
+            return errorResponse(res, 401, 'User not authenticated');
+        }
+
+        const { isSmsProtectionEnabled } = req.body;
+        const updatedUser = await updateSmsProtection(user.phone, isSmsProtectionEnabled);
+
+        return successResponse(res, 200, 'Security settings updated successfully', updatedUser);
+    } catch (error) {
+        console.error('Error updating security settings:', error);
+        return errorResponse(res, 500, 'Internal server error');
+    }
+};
 
 module.exports = {
     registerUser, loginUserController,
-    authenticateUser, uploadProfilePic, upload
+    authenticateUser, uploadProfilePic, upload,
+    updateProfile, changePassword, updateSecuritySettings
 }

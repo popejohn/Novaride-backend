@@ -7,10 +7,10 @@ const riderSchema = new mongoose.Schema({
     plateNumber: { type: String, required: true, unique: true },
     location: {
         type: { type: String, enum: ['Point'], default: 'Point' },
-        coordinates: { type: [Number], required: true }, // [longitude, latitude]
+        coordinates: { type: [Number] }, // [longitude, latitude]
     },
     isAvailable: { type: Boolean, default: true },
-    isVerified: { type: Boolean, default: false },
+    isVerified: { type: Boolean, default: true },
     driverLicenseNumber: { type: String, required: true, unique: true },
     driverLicenseExpiry: { type: Date, required: true },
     insuranceNumber: { type: String },
@@ -28,7 +28,7 @@ const riderSchema = new mongoose.Schema({
     },
 }, { timestamps: true });
 
-
+riderSchema.index({ location: '2dsphere' });
 
 const riderModel = mongoose.model('Rider', riderSchema);
 

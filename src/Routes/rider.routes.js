@@ -1,5 +1,5 @@
 const route = require('express').Router();
-const { getRiderDetails, createRiderProfile, updateRiderLocation, createRide, getNearbyDrivers } = require('../Controllers/rider.controller');
+const { getRiderDetails, createRiderProfile, updateRiderLocation, getNearbyDrivers } = require('../Controllers/rider.controller');
 const { authenticate } = require('../Middlewares/authenticator');
 
 route.get('/get-details', authenticate, getRiderDetails);

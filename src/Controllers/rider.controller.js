@@ -9,7 +9,7 @@ const getRiderDetails = async (req, res) => {
     try {
         // Since authentication is handled by middleware, req.user is set
         const decodedToken = req.user;
-        
+
         if (!decodedToken.role.includes('rider')) {
             return res.status(403).json({ message: "Access denied: Not a rider" });
         }
@@ -36,7 +36,7 @@ const getRiderDetails = async (req, res) => {
 const createRiderProfile = async (req, res) => {
     try {
         const decodedToken = req.user;
-        
+
         if (!decodedToken.role.includes('rider')) {
             return res.status(403).json({ message: "Access denied: Not a rider" });
         }
@@ -109,7 +109,7 @@ const createRiderProfile = async (req, res) => {
             { upsert: true, new: true }
         );
 
-        return res.status(200).json({ 
+        return res.status(200).json({
             message: "Rider profile created/updated successfully",
             rider: rider
         });
@@ -127,7 +127,7 @@ const createRiderProfile = async (req, res) => {
 const updateRiderLocation = async (req, res) => {
     try {
         const decodedToken = req.user;
-        
+
         if (!decodedToken.role.includes('rider')) {
             return res.status(403).json({ message: "Access denied: Not a rider" });
         }
@@ -141,21 +141,26 @@ const updateRiderLocation = async (req, res) => {
 
         const { latitude, longitude, isAvailable } = req.body;
 
-        // Validate coordinates
-        if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+        // Validate coordinates (if providing them)
+        if (isAvailable !== false && (typeof latitude !== 'number' || typeof longitude !== 'number')) {
             return res.status(400).json({ message: "Invalid coordinates" });
         }
 
         // Update rider location and availability
-        const updateData = {
-            location: {
-                type: 'Point',
-                coordinates: [longitude, latitude] // MongoDB GeoJSON format: [lng, lat]
-            }
-        };
-
-        if (typeof isAvailable === 'boolean') {
-            updateData.isAvailable = isAvailable;
+        let updateData = {};
+        if (isAvailable === false) {
+            updateData = {
+                $unset: { location: "" },
+                isAvailable: false
+            };
+        } else {
+            updateData = {
+                location: {
+                    type: 'Point',
+                    coordinates: [longitude, latitude] // MongoDB GeoJSON format: [lng, lat]
+                },
+                isAvailable: true
+            };
         }
 
         const rider = await riderModel.findOneAndUpdate(
@@ -168,7 +173,7 @@ const updateRiderLocation = async (req, res) => {
             return res.status(404).json({ message: "Rider profile not found" });
         }
 
-        return res.status(200).json({ 
+        return res.status(200).json({
             message: "Location updated successfully",
             rider: rider
         });
@@ -178,8 +183,6 @@ const updateRiderLocation = async (req, res) => {
         return res.status(500).json({ message: "Server error", error: error.message });
     }
 };
-
-
 
 //controller to get nearby drivers
 const getNearbyDrivers = async (req, res) => {
@@ -202,7 +205,7 @@ const getNearbyDrivers = async (req, res) => {
                 }
             },
             isAvailable: true,
-            isVerified: true
+            // isVerified: true // Relaxed for testing
         }).populate('riderInfo', 'firstname lastname profilePic');
 
         return res.status(200).json({

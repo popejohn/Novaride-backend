@@ -9,7 +9,7 @@ const rideDetailsSchema = new mongoose.Schema({
     distance: { type: Number, required: true }, // in km
     rideStatus: {
         type: String,
-        enum: ['pending', 'accepted', 'completed'],
+        enum: ['pending', 'waiting_for_acceptance', 'accepted', 'at_pickup', 'starting', 'in_progress', 'completed', 'cancelled'],
         default: 'pending'
     },
     pickupCoordinates: {
@@ -20,7 +20,15 @@ const rideDetailsSchema = new mongoose.Schema({
         type: { type: String, enum: ['Point'], default: 'Point' },
         coordinates: { type: [Number], required: true } // [longitude, latitude]
     },
-    assignedDriver: { type: mongoose.Schema.Types.ObjectId, ref: 'Rider' }
+    assignedDriver: { type: mongoose.Schema.Types.ObjectId, ref: 'Rider' },
+    rating: { type: Number, min: 1, max: 5 },
+    feedback: { type: String },
+    complaints: [{
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        role: { type: String, enum: ['passenger', 'rider'] },
+        text: { type: String, required: true },
+        createdAt: { type: Date, default: Date.now }
+    }]
 }, { timestamps: true });
 
 // Index for geospatial queries on pickup location
