@@ -1,118 +1,157 @@
 const mongoose = require('mongoose');
 const userModel = require('../Schemas/user.schema');
 const { otpModel } = require('../Schemas/otp.model');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 
 const createUser = async (userData) => {
-    try {
-        const user = new userModel(userData);
-        await user.save();
-        return user;
-    } catch (error) {
-        throw new Error('Error creating user: ' + error.message);
-    }
+  try {
+    const user = new userModel(userData);
+    await user.save();
+    return user;
+  } catch (error) {
+    throw new Error('Error creating user: ' + error.message);
+  }
 };
 
 
 const getUserByPhone = async (phone) => {
-    try {
-        const user = await userModel.findOne({ phone });
-        return user;
-    } catch (error) {
-        throw new Error('Error fetching user: ' + error.message);
-    }
+  try {
+    const user = await userModel.findOne({ phone });
+    return user;
+  } catch (error) {
+    throw new Error('Error fetching user: ' + error.message);
+  }
+};
+
+const getUserByEmail = async (email) => {
+  try {
+    const user = await userModel.findOne({ email: email.toLowerCase().trim() });
+    return user;
+  } catch (error) {
+    throw new Error('Error fetching user: ' + error.message);
+  }
 };
 
 const loginUser = async (phone, password) => {
-    try {
-        const user = await getUserByPhone(phone);
-        if (!user) {
-            throw new Error('User not found');
-        }
-        const isPasswordValid = await bcrypt.compare(password, user.password);
-        if (!isPasswordValid) {
-            throw new Error('Invalid password');
-        }
-        const safeUser = { ...user._doc };
-        delete safeUser.password;
-        return safeUser;
-    } catch (error) {
-        throw new Error('Error logging in user: ' + error.message);
+  try {
+    const user = await getUserByPhone(phone);
+    if (!user) {
+      throw new Error('User not found');
     }
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new Error('Invalid password');
+    }
+    const safeUser = { ...user._doc };
+    delete safeUser.password;
+    return safeUser;
+  } catch (error) {
+    throw new Error('Error logging in user: ' + error.message);
+  }
 };
 
 const verifyOtp = async (userId, otp) => {
-    try {
-        const otpRecord = await otpModel.findOne({ userId, otp });
-        if (!otpRecord) {
-            throw new Error('Invalid OTP');
-        }
-        return true;
-    } catch (error) {
-        throw new Error('Error verifying OTP: ' + error.message);
+  try {
+    const otpRecord = await otpModel.findOne({ userId, otp });
+    if (!otpRecord) {
+      throw new Error('Invalid OTP');
     }
+    return true;
+  } catch (error) {
+    throw new Error('Error verifying OTP: ' + error.message);
+  }
 };
 
 const updateUserProfilePic = async (phone, profilePicUrl) => {
-    try {
-        const user = await userModel.findOneAndUpdate(
-            { phone },
-            { profilePic: profilePicUrl },
-            { new: true }
-        );
-        return user;
-    } catch (error) {
-        throw new Error('Error updating profile picture: ' + error.message);
-    }
+  try {
+    const user = await userModel.findOneAndUpdate(
+      { phone },
+      { profilePic: profilePicUrl },
+      { new: true }
+    );
+    return user;
+  } catch (error) {
+    throw new Error('Error updating profile picture: ' + error.message);
+  }
 };
 
 
 const updateUserProfile = async (phone, updateData) => {
-    try {
-        const user = await userModel.findOneAndUpdate(
-            { phone },
-            { $set: updateData },
-            { new: true }
-        );
-        if (!user) {
-            throw new Error('User not found');
-        }
-        const safeUser = { ...user._doc };
-        delete safeUser.password;
-        return safeUser;
-    } catch (error) {
-        throw new Error('Error updating user profile: ' + error.message);
+  try {
+    const user = await userModel.findOneAndUpdate(
+      { phone },
+      { $set: updateData },
+      { new: true }
+    );
+    if (!user) {
+      throw new Error('User not found');
     }
+    const safeUser = { ...user._doc };
+    delete safeUser.password;
+    return safeUser;
+  } catch (error) {
+    throw new Error('Error updating user profile: ' + error.message);
+  }
 };
 
 
 const updatePassword = async (phone, newHashedPassword) => {
-    try {
-        const user = await userModel.findOneAndUpdate(
-            { phone },
-            { password: newHashedPassword },
-            { new: true }
-        );
-        return user;
-    } catch (error) {
-        throw new Error('Error updating password: ' + error.message);
-    }
+  try {
+    const user = await userModel.findOneAndUpdate(
+      { phone },
+      { password: newHashedPassword },
+      { new: true }
+    );
+    return user;
+  } catch (error) {
+    throw new Error('Error updating password: ' + error.message);
+  }
 };
 
 const updateSmsProtection = async (phone, isEnabled) => {
-    try {
-        const user = await userModel.findOneAndUpdate(
-            { phone },
-            { isSmsProtectionEnabled: isEnabled },
-            { new: true }
-        );
-        const safeUser = { ...user._doc };
-        delete safeUser.password;
-        return safeUser;
-    } catch (error) {
-        throw new Error('Error updating SMS protection: ' + error.message);
-    }
+  try {
+    const user = await userModel.findOneAndUpdate(
+      { phone },
+      { isSmsProtectionEnabled: isEnabled },
+      { new: true }
+    );
+    const safeUser = { ...user._doc };
+    delete safeUser.password;
+    return safeUser;
+  } catch (error) {
+    throw new Error('Error updating SMS protection: ' + error.message);
+  }
 };
 
-module.exports = { createUser, getUserByPhone, loginUser, verifyOtp, updateUserProfilePic, updateUserProfile, updatePassword, updateSmsProtection };
+const verifyOtpForPasswordReset = async (phone, otp) => {
+  try {
+    const user = await getUserByPhone(phone);
+    if (!user) {
+      throw new Error('User not found');
+    }
+        
+    const cleanOtp = otp.replace(/\D/g, '');
+    const dottedOtp = cleanOtp.split('').join('.');
+        
+    const otpRecord = await otpModel.findOne({
+      userId: user._id,
+      $or: [
+        { otp: otp },
+        { otp: cleanOtp },
+        { otp: dottedOtp }
+      ]
+    });
+    if (!otpRecord) {
+      throw new Error('Invalid or expired OTP');
+    }
+        
+    // OTP is valid, delete it after verification
+    await otpModel.deleteOne({ _id: otpRecord._id });
+    return user._id;
+  } catch (error) {
+    throw new Error('Error verifying OTP: ' + error.message);
+  }
+};
+
+module.exports = { createUser, getUserByPhone, getUserByEmail, loginUser, verifyOtp, updateUserProfilePic, updateUserProfile, updatePassword, updateSmsProtection, verifyOtpForPasswordReset };

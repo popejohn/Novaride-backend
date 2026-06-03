@@ -1,12 +1,9 @@
-const createOTP = (length = 6) => {
-  let otp = '';
-  const characters = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';  
-    for (let i = 0; i < length; i++) {
-        otp += characters.charAt(Math.floor(Math.random() * characters.length));
-    }
-    return otp;
-}
+//The createOTP funcion should return a sixdigit number (not separated by dots)
+const crypto = require('crypto');
 
+function createOTP() {
+  return crypto.randomInt(100000, 999999).toString();
+}
 
 
 

@@ -2,9 +2,10 @@
 const express = require('express');
 const dotenv = require('dotenv');
 const mongoose = require('mongoose');
-const cors = require('cors');
 const morgan = require('morgan');
 const allRoutes = require('./src/Routes/allRoutes');
+const securityMiddleware = require('./src/Middlewares/security');
+const { errorHandler } = require('./src/Middlewares/errorHandler');
 
 // Load environment variables from .env file
 dotenv.config();
@@ -15,14 +16,20 @@ const connectDB = require('./src/Configs/connection');
 // Initialize Express app
 const app = express();
 
+// Enable trust proxy for correct IP rate-limiting behind reverse proxies (Nginx/ALB)
+app.set('trust proxy', 1);
+
+// Apply security middleware (includes CORS and Helmet)
+securityMiddleware(app);
+
 // Custom Morgan token for full URL
 morgan.token('full-url', function (req) {
   return req.protocol + '://' + req.get('host') + req.originalUrl;
 });
 
 // Middleware to parse JSON requests
-app.use(express.json());
-app.use(cors());
+app.use(express.json({ limit: '10mb' })); // Add payload size limit
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Custom Morgan logging with colors and error messages
 app.use(morgan(function (tokens, req, res) {
@@ -55,8 +62,10 @@ app.use(morgan(function (tokens, req, res) {
   return log;
 }));
 
-app.use('/', allRoutes);
+app.use('/api', allRoutes);
 
+// Centralized error handling middleware (must be last)
+app.use(errorHandler);
 
 
 
