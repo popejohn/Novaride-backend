@@ -7,6 +7,7 @@ const userRoutes = require('./user.routes');
 const paystackRoutes = require('./paystack.routes');
 const healthRoutes = require('./health');
 const adminRoutes = require('./admin.Routes');
+const locationRoutes = require('./location.routes');
 
 // Health check routes (no auth required)
 router.use('/health', healthRoutes);
@@ -23,6 +24,8 @@ router.use('/user', userRoutes);
 router.use('/paystack', paystackRoutes);
 // Admin routes
 router.use('/admin', adminRoutes);
+// Location routes
+router.use('/location', locationRoutes);
 
 
 

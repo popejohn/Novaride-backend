@@ -7,10 +7,7 @@ const allRoutes = require('./src/Routes/allRoutes');
 const securityMiddleware = require('./src/Middlewares/security');
 const { errorHandler } = require('./src/Middlewares/errorHandler');
 
-// Load environment variables from .env file
-dotenv.config({
-  path: `.env.${process.env.NODE_ENV} || development`
-});
+
 // Import the database connection function
 const connectDB = require('./src/Configs/connection');
 

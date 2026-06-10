@@ -1,6 +1,10 @@
 // Configure env variables and export after validating required fields using envalid
-require('dotenv').config();
+require('dotenv').config({
+  path: `.env.${process.env.NODE_ENV || 'development'}`
+});
+
 const { cleanEnv, str, port, bool, num } = require('envalid');
+
 
 
 const env = cleanEnv(process.env, {
@@ -8,8 +12,10 @@ const env = cleanEnv(process.env, {
   PORT: port({ default: 5000 }),
   JWT_SECRET: str(),
   FRONTEND_URL: str({default: ''}),
+  ADMIN_CLIENT_URL: str({default: ''}),
   PAYSTACK_SECRET_KEY: str({ devDefault: '' }),
-  NODE_ENV: str({ choices: ['development', 'production', 'test'], default: 'development' }),
+  LOCATIONIQ_API_KEY: str(),
+  NODE_ENV: str({ choices: ['development', 'production', 'staging'], default: 'development' }),
   BESTBULK_SMS_KEY: str(),
   BESTBULK_SENDER_ID: str({ default: 'NOVARIDE' }),
   RABBITMQ_URL: str(),
