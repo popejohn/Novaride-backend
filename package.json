@@ -7,8 +7,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "dev": "cross-env NODE_ENV=development nodemon server.js",
-    "staging": "cross-env NODE_ENV=staging nodemon server.js",
-    "start": "cross-env NODE_ENV=production nodemon server.js",
+    "staging": "node server.js",
+    "start": "node server.js",
     "start:worker": "node src/Queues/consume.rabbitmq.js",
     "lint": "eslint src/**/*.js",
     "lint:fix": "eslint src/**/*.js --fix"
