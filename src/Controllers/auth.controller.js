@@ -263,7 +263,6 @@ const forgotPassword = async (req, res) => {
     if (!phone) {
       return errorResponse(res, 400, 'Phone number is required');
     }
-
     const user = await getUserByPhone(phone);
     if (!user) {
       return errorResponse(res, 404, 'User with this phone number not found');
