@@ -15,7 +15,7 @@ async function sendOTP(OTP, recipientNumber) {
     to: recipients,
     message: `Verify it's you: ${OTP}`,
     route: "standard",
-    source_url: "https://api-staging.novaride.ng/api/auth/forgot-password", // Optional: Add your source URL for better deliverability
+    source_url: `${env.BASE_URL}/api/auth/forgot-password`, // Optional: Add your source URL for better deliverability
   };
 
   try {

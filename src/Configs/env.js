@@ -33,6 +33,7 @@ const env = cleanEnv(process.env, {
   UPSTASH_REDIS_REST_TOKEN: str({ default: '' }),
   RESEND_API_KEY: str({ default: '' }),
   RESEND_FROM_EMAIL: str({ default: '' }),
+  BASE_URL: str({ default: '' }),
 });
 
 module.exports = env;
