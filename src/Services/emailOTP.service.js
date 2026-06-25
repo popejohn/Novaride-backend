@@ -11,7 +11,7 @@ async function sendOtpEmail(otp, toEmail) {
     throw new Error('Email address is required');
   }
 
-  const from = `Novaride ${process.env.RESEND_FROM_EMAIL}` || 'onboarding@resend.dev';
+  const from = `Novaride <${process.env.RESEND_FROM_EMAIL}>` || 'onboarding@resend.dev';
   const apiKey = env.RESEND_API_KEY;
 
   if (!apiKey) {

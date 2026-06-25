@@ -3,10 +3,12 @@ const router = express.Router();
 const locationController = require('../Controllers/location.controller');
 const { authenticate } = require('../Middlewares/authenticator');
 
-// All location routes require JWT authentication
-router.get('/autocomplete', authenticate, locationController.autocomplete);
-router.get('/reverse', authenticate, locationController.reverse);
-router.get('/search', authenticate, locationController.search);
+// Public location routes (no JWT required)
+router.get('/autocomplete', locationController.autocomplete);
+router.get('/reverse', locationController.reverse);
+router.get('/search', locationController.search);
+
+// Protected location routes
 router.get('/directions/driving/:coordinates', authenticate, locationController.directions);
 
 module.exports = router;
