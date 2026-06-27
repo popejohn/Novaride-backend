@@ -7,16 +7,13 @@ const redis = require('redis');
 const { Redis } = require('@upstash/redis');
 const connectDB = require('./src/Configs/connection');
 const env = require('./src/Configs/env');
-
 // Global error handlers for uncaught exceptions and unhandled rejections
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
   gracefulShutdown('uncaughtException');
 });
-
 process.on('unhandledRejection', (err) => {
   console.error('Unhandled Rejection:', err);
-
   // Redis connection errors handling based on environment
   if (err && (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.message?.includes('ECONNREFUSED') || err.message?.includes('ENOTFOUND') || err.message?.includes('Redis'))) {
     if (env.NODE_ENV === 'production') {
@@ -28,16 +25,13 @@ process.on('unhandledRejection', (err) => {
       return;
     }
   }
-
   // Database connection errors in development should be logged but not crash app.
   if (err && err.name === 'MongoParseError') {
     console.warn('MongoDB connection issue detected in development; app continues with offline mode.');
     return;
   }
-
   gracefulShutdown('unhandledRejection');
 });
-
 // Connect to MongoDB
 (async () => {
   try {
@@ -46,11 +40,9 @@ process.on('unhandledRejection', (err) => {
     console.error('Failed to initialize MongoDB connection:', error);
   }
 })();
-
 // Redis client for socket rate limiting (REQUIRED for production scaling)
 let socketRedis = null;
 let socketRedisReady = false;
-
 if (env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN) {
   try {
     // Initialize Upstash Redis client using REST API credentials
@@ -81,10 +73,8 @@ if (env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN) {
     console.warn('⚠️ UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN not set. Running with rate limiting disabled (development only)');
   }
 }
-
 // Create HTTP server
 const server = http.createServer(app);
-
 // Initialize Socket.io with connection limits and error handling
 const io = new Server(server, {
   cors: {
@@ -94,16 +84,13 @@ const io = new Server(server, {
   if (!origin) {
     return callback(null, true);
   }
-
   const allowedOrigins = [
     process.env.FRONTEND_URL,
     process.env.ADMIN_CLIENT_URL
   ].filter(Boolean);
-
   if (allowedOrigins.includes(origin)) {
     return callback(null, true);
   }
-
   return callback(new Error(`CORS blocked for origin: ${origin}`));
 },
     credentials: true,
@@ -115,7 +102,6 @@ const io = new Server(server, {
   pingInterval: 25000, // 25 seconds
   maxConnections: 1000 // Limit concurrent connections
 });
-
 // Set up redis adapter if redis is available
 // Note: Upstash REST API is used for rate limiting, but Socket.IO adapter needs TCP connection
 // For production with multi-instance deployments, use a raw Redis connection for the adapter
@@ -123,21 +109,18 @@ if (env.REDIS_URL) {
   try {
     const pubClient = redis.createClient({ url: env.REDIS_URL });
     const subClient = pubClient.duplicate();
-
     pubClient.on('error', (err) => {
       console.warn('⚠️ Redis pub client error:', err.message);
       if (env.NODE_ENV === 'production') {
         console.error('❌ CRITICAL: Redis pub client failed in production');
       }
     });
-
     subClient.on('error', (err) => {
       console.warn('⚠️ Redis sub client error:', err.message);
       if (env.NODE_ENV === 'production') {
         console.error('❌ CRITICAL: Redis sub client failed in production');
       }
     });
-
     Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
       io.adapter(createAdapter(pubClient, subClient));
       console.log('✅ Socket.IO Redis Adapter configured');
@@ -159,15 +142,12 @@ if (env.REDIS_URL) {
 } else {
   console.log('ℹ️ REDIS_URL not set. Using in-memory Socket.IO adapter (development only)');
 }
-
 // Attach io to app for access in controllers
 app.set('io', io);
-
 // Socket.io connection tracking
 const connectedSockets = new Map();
 let connectionCount = 0;
 const MAX_CONNECTIONS = 1000;
-
 // Handle Socket.io connections with error handling and rate limiting
 io.on('connection', (socket) => {
   // Authenticate socket via JWT token in handshake
@@ -177,7 +157,6 @@ io.on('connection', (socket) => {
     socket.disconnect(true);
     return;
   }
-
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     socket.user = decoded;
@@ -187,24 +166,19 @@ io.on('connection', (socket) => {
     socket.disconnect(true);
     return;
   }
-
   // Check connection limit
   if (connectionCount >= MAX_CONNECTIONS) {
     socket.emit('error', { message: 'Server at capacity, please try again later' });
     socket.disconnect(true);
     return;
   }
-
   connectionCount++;
   connectedSockets.set(socket.id, socket);
-
   console.log(`--- Socket Connected --- ID: ${socket.id} (Total: ${connectionCount})`);
-
   // Handle connection errors
   socket.on('error', (error) => {
     console.error(`Socket error for ${socket.id}:`, error);
   });
-
   // Join a room based on the user's role/id with error handling
   socket.on('join', (userId) => {
     try {
@@ -219,7 +193,6 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: 'Failed to join room' });
     }
   });
-
   // Join a specific ride room for live tracking with error handling
   socket.on('joinRide', (rideId) => {
     try {
@@ -234,43 +207,55 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: 'Failed to join ride room' });
     }
   });
-
+  // Join a support chat room
+  socket.on('joinSupportChat', (chatId) => {
+    try {
+      if (!chatId || typeof chatId !== 'string') {
+        socket.emit('error', { message: 'Invalid chat ID' });
+        return;
+      }
+      socket.join(`chat:${chatId}`);
+      console.log(`[Socket] Joined Support Chat Room: chat:${chatId}`);
+    } catch (error) {
+      console.error(`Error joining support chat room ${chatId}:`, error);
+      socket.emit('error', { message: 'Failed to join support chat room' });
+    }
+  });
   // Handle rider location updates with rate limiting and batching
   socket.on('updateLocation', async (data) => {
     try {
       const userKey = socket.user && socket.user.id ? `location:${socket.user.id}` : `location:${socket.id}`;
       const maxPerMinute = 20; // Reduced from 30 for better scalability
       const ttlSeconds = 60;
-
-      // Redis-only rate limiting (Redis is required)
+      // Redis-only rate limiting (Redis is required in production)
       if (!socketRedisReady || !socketRedis) {
-        socket.emit('error', { message: 'Redis connection unavailable' });
-        return;
-      }
-
-      try {
-        const counter = await socketRedis.incr(userKey);
-        if (counter === 1) {
-          await socketRedis.expire(userKey, ttlSeconds);
-        }
-
-        if (counter > maxPerMinute) {
-          socket.emit('error', { message: 'Too many location updates, please slow down' });
+        if (env.NODE_ENV === 'production') {
+          socket.emit('error', { message: 'Redis connection unavailable' });
           return;
         }
-      } catch (redisErr) {
-        console.error('Redis rate limit check failed:', redisErr);
-        socket.emit('error', { message: 'Rate limiting service unavailable' });
-        return;
+        console.warn('⚠️ Rate limiting bypassed: Redis connection unavailable in development');
+      } else {
+        try {
+          const counter = await socketRedis.incr(userKey);
+          if (counter === 1) {
+            await socketRedis.expire(userKey, ttlSeconds);
+          }
+          if (counter > maxPerMinute) {
+            socket.emit('error', { message: 'Too many location updates, please slow down' });
+            return;
+          }
+        } catch (redisErr) {
+          console.error('Redis rate limit check failed:', redisErr);
+          socket.emit('error', { message: 'Rate limiting service unavailable' });
+          return;
+        }
       }
-
       const { rideId, location } = data;
       if (!rideId || !location || typeof location !== 'object' || 
           location.lat === undefined || location.lng === undefined) {
         socket.emit('error', { message: 'Invalid location data' });
         return;
       }
-
       // Broadcast to everyone in the ride room EXCEPT the sender
       socket.to(rideId).emit('driverLocationUpdate', { location, timestamp: Date.now() });
       console.log(`[Socket] Location Broadcast for Ride ${rideId}`);
@@ -279,37 +264,30 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: 'Failed to update location' });
     }
   });
-
   socket.on('disconnect', (reason) => {
     connectionCount--;
     connectedSockets.delete(socket.id);
     console.log(`User disconnected: ${socket.id} (Reason: ${reason}) (Total: ${connectionCount})`);
   });
-
   // Handle connection timeout
   socket.on('connect_timeout', () => {
     console.log(`Connection timeout for socket: ${socket.id}`);
     socket.disconnect(true);
   });
 });
-
 // Graceful shutdown handling
 function gracefulShutdown(signal) {
   console.log(`Received ${signal}, shutting down gracefully...`);
-
   // Stop accepting new connections
   server.close((err) => {
     if (err) {
       console.error('Error during server shutdown:', err);
       process.exit(1);
     }
-
     console.log('HTTP server closed.');
-
     // Close all socket connections
     io.close(() => {
       console.log('Socket.io server closed.');
-
       // Close database connections
       const mongoose = require('mongoose');
       mongoose.connection.close(() => {
@@ -318,21 +296,18 @@ function gracefulShutdown(signal) {
       });
     });
   });
-
   // Force shutdown after 30 seconds
   setTimeout(() => {
     console.error('Forced shutdown after timeout');
     process.exit(1);
   }, 30000);
 };
-
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 // Define a simple route
 app.get('/', (req, res) => {
   res.send('API is running with Socket.io...');
 });
-
 // Start the server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {

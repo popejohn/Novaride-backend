@@ -11,15 +11,6 @@ const { sendOtpEmail } = require('../Services/emailOTP.service');
 
 
 
-
-
-
-
-
-
-
-
-
 const registerUser = async (req, res) => {
   try {
     const { firstname, lastname, email, phone, password, role } = req.validatedUserData;
