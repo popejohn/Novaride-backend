@@ -31,11 +31,18 @@ const securityMiddleware = (app) => {
       // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
 
-      const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173').split(',').map(url => url.trim());
+      const frontendOrigins = (process.env.FRONTEND_URL || '').split(',').map(url => url.trim()).filter(Boolean);
+      const adminOrigins = (process.env.ADMIN_CLIENT_URL || '').split(',').map(url => url.trim()).filter(Boolean);
 
-      if (allowedOrigins.indexOf(origin) !== -1) {
+      // Safe defaults for local development
+      const devDefaults = ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5174', 'http://127.0.0.1:5174'];
+
+      const allowedOrigins = [...new Set([...frontendOrigins, ...adminOrigins, ...devDefaults])];
+
+      if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        console.warn(`[CORS] Blocked origin: ${origin}. Allowed origins: ${allowedOrigins.join(', ')}`);
         callback(new Error('Not allowed by CORS'));
       }
     },

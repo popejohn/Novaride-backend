@@ -4,7 +4,7 @@ const { Server } = require('socket.io');
 const { createAdapter } = require('@socket.io/redis-adapter');
 const jwt = require('jsonwebtoken');
 const redis = require('redis');
-const { Redis } = require('@upstash/redis');
+const { upstashRedis, upstashRedisReady } = require('./src/Configs/upstash');
 const connectDB = require('./src/Configs/connection');
 const env = require('./src/Configs/env');
 // Global error handlers for uncaught exceptions and unhandled rejections
@@ -40,38 +40,17 @@ process.on('unhandledRejection', (err) => {
     console.error('Failed to initialize MongoDB connection:', error);
   }
 })();
-// Redis client for socket rate limiting (REQUIRED for production scaling)
-let socketRedis = null;
-let socketRedisReady = false;
-if (env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN) {
-  try {
-    // Initialize Upstash Redis client using REST API credentials
-    socketRedis = new Redis({
-      url: env.UPSTASH_REDIS_REST_URL,
-      token: env.UPSTASH_REDIS_REST_TOKEN
-    });
-    socketRedisReady = true;
-    console.log('✅ Upstash Redis connected for socket rate limiting');
-  } catch (err) {
-    console.error('❌ Upstash Redis connection failed:', err.message);
-    
-    if (env.NODE_ENV === 'production') {
-      console.error('❌ CRITICAL: Cannot start in production without Redis. Redis is required for:');
-      console.error('   - Rate limiting for location updates');
-      console.error('   - Distributed data management');
-      process.exit(1);
-    } else {
-      console.warn('⚠️ Running in development mode with rate limiting disabled (NOT for production)');
-      socketRedisReady = false;
-    }
-  }
+// Use shared Upstash Redis client for socket rate limiting
+const socketRedis = upstashRedis;
+const socketRedisReady = upstashRedisReady;
+
+if (env.NODE_ENV === 'production' && (!socketRedis || !socketRedisReady)) {
+  console.error('❌ CRITICAL: Upstash Redis is required in production for socket rate limiting. Exiting.');
+  process.exit(1);
+} else if (!socketRedisReady) {
+  console.warn('⚠️ Running in development mode with socket rate limiting disabled (Upstash Redis not configured)');
 } else {
-  if (env.NODE_ENV === 'production') {
-    console.error('❌ CRITICAL: UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN not set. Redis is required for production.');
-    process.exit(1);
-  } else {
-    console.warn('⚠️ UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN not set. Running with rate limiting disabled (development only)');
-  }
+  console.log('✅ Shared Upstash Redis client configured for socket rate limiting');
 }
 // Create HTTP server
 const server = http.createServer(app);

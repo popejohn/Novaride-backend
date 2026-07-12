@@ -36,7 +36,6 @@
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
     "nodemon": "^3.1.10",
-    "rate-limit-redis": "^5.0.0",
     "redis": "^4.7.1",
     "resend": "^6.12.3",
     "socket.io": "^4.8.3",
