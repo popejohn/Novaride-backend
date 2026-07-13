@@ -26,11 +26,13 @@ const env = cleanEnv(process.env, {
   // Database connection optimization
   DB_MAX_POOL_SIZE: num({ default: 10 }),
   DB_SOCKET_TIMEOUT: num({ default: 45000 }),
-  // Redis for caching and rate limiting
+  // Redis for caching and rate limiting (legacy, prefer UPSTASH_REDIS_TCP_URL)
   REDIS_URL: str({ default: '' }),
-  // Upstash Redis REST API credentials
+  // Upstash Redis REST API credentials (used for HTTP-based rate limiting)
   UPSTASH_REDIS_REST_URL: str({ default: '' }),
   UPSTASH_REDIS_REST_TOKEN: str({ default: '' }),
+  // Upstash Redis TCP URL (rediss://) — used for Socket.IO adapter pub/sub
+  UPSTASH_REDIS_TCP_URL: str({ default: '' }),
   RESEND_API_KEY: str({ default: '' }),
   RESEND_FROM_EMAIL: str({ default: '' }),
   BASE_URL: str({ default: '' }),

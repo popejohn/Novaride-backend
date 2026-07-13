@@ -21,6 +21,7 @@ class UpstashRedisStore {
   }
 
   init(options) {
+
     this.windowMs = options.windowMs;
   }
 

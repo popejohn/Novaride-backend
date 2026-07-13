@@ -11,7 +11,20 @@ const { authenticate } = require('../Middlewares/authenticator');
 
 
 router.post('/signup', createAccountLimiter, validateUserSchema, registerUser);
-router.post('/login', authLimiter, validateLoginSchema, loginUserController);
+router.post(
+    '/login',
+    (req, res, next) => {
+        console.log('➡️ Before authLimiter');
+        next();
+    },
+    authLimiter,
+    (req, res, next) => {
+        console.log('➡️ After authLimiter');
+        next();
+    },
+    validateLoginSchema,
+    loginUserController
+);
 router.get('/verify-token', authenticate, authenticateUser);
 router.post('/upload-profile-pic', authenticate, upload.single('profilePic'), uploadProfilePic);
 router.put('/update-profile', authenticate, updateProfile);

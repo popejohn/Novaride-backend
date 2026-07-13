@@ -81,12 +81,14 @@ const io = new Server(server, {
   pingInterval: 25000, // 25 seconds
   maxConnections: 1000 // Limit concurrent connections
 });
-// Set up redis adapter if redis is available
-// Note: Upstash REST API is used for rate limiting, but Socket.IO adapter needs TCP connection
-// For production with multi-instance deployments, use a raw Redis connection for the adapter
-if (env.REDIS_URL) {
+// Set up Redis adapter for Socket.IO (required for multi-instance pub/sub)
+// Uses UPSTASH_REDIS_TCP_URL (rediss://) — get this from your Upstash dashboard
+// under "Connect" > "ioredis" or "node-redis" (the TCP endpoint, not the REST URL).
+// Falls back to legacy REDIS_URL if UPSTASH_REDIS_TCP_URL is not set.
+const socketAdapterUrl = env.UPSTASH_REDIS_TCP_URL || env.REDIS_URL;
+if (socketAdapterUrl) {
   try {
-    const pubClient = redis.createClient({ url: env.REDIS_URL });
+    const pubClient = redis.createClient({ url: socketAdapterUrl });
     const subClient = pubClient.duplicate();
     pubClient.on('error', (err) => {
       console.warn('⚠️ Redis pub client error:', err.message);
@@ -102,7 +104,7 @@ if (env.REDIS_URL) {
     });
     Promise.all([pubClient.connect(), subClient.connect()]).then(() => {
       io.adapter(createAdapter(pubClient, subClient));
-      console.log('✅ Socket.IO Redis Adapter configured');
+      console.log('✅ Socket.IO Redis Adapter configured (Upstash TCP)');
     }).catch((err) => {
       console.error('❌ Socket.IO Redis adapter connection failed:', err.message);
       if (env.NODE_ENV === 'production') {
@@ -119,7 +121,11 @@ if (env.REDIS_URL) {
     }
   }
 } else {
-  console.log('ℹ️ REDIS_URL not set. Using in-memory Socket.IO adapter (development only)');
+  if (env.NODE_ENV === 'production') {
+    console.error('❌ CRITICAL: UPSTASH_REDIS_TCP_URL is not set. Socket.IO adapter requires a TCP Redis URL in production.');
+    process.exit(1);
+  }
+  console.warn('ℹ️ UPSTASH_REDIS_TCP_URL not set. Using in-memory Socket.IO adapter (single-instance / development only).');
 }
 // Attach io to app for access in controllers
 app.set('io', io);

@@ -148,4 +148,20 @@ router.get('/metrics', async (req, res) => {
   }
 });
 
+router.get("/redis", async (req, res) => {
+  try {
+    await upstashRedis.set("health", Date.now().toString(), { ex: 10 });
+
+    res.json({
+      status: "healthy",
+      redis: "connected",
+    });
+  } catch (err) {
+    res.status(500).json({
+      status: "unhealthy",
+      redis: err.message,
+    });
+  }
+});
+
 module.exports = router;
