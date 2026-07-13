@@ -58,20 +58,20 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
-  // Allow requests without an Origin header
-  // (Postman, mobile apps, server-to-server requests)
-  if (!origin) {
-    return callback(null, true);
-  }
-  const allowedOrigins = [
-    process.env.FRONTEND_URL,
-    process.env.ADMIN_CLIENT_URL
-  ].filter(Boolean);
-  if (allowedOrigins.includes(origin)) {
-    return callback(null, true);
-  }
-  return callback(new Error(`CORS blocked for origin: ${origin}`));
-},
+      // Allow requests without an Origin header
+      // (Postman, mobile apps, server-to-server requests)
+      if (!origin) {
+        return callback(null, true);
+      }
+      const allowedOrigins = [
+        process.env.FRONTEND_URL,
+        process.env.ADMIN_CLIENT_URL
+      ].filter(Boolean);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
     credentials: true,
     methods: ['GET', 'POST']
   },
@@ -185,8 +185,13 @@ io.on('connection', (socket) => {
         socket.emit('error', { message: 'Invalid ride ID' });
         return;
       }
+
       socket.join(rideId);
-      console.log(`[Socket] Ride Room Joined: ${rideId}`);
+
+      console.log(
+        `[Socket] Ride Room Joined: ${rideId}. Members:`,
+        [...(io.sockets.adapter.rooms.get(rideId) || [])]
+      );
     } catch (error) {
       console.error(`Error joining ride room ${rideId}:`, error);
       socket.emit('error', { message: 'Failed to join ride room' });
@@ -236,8 +241,8 @@ io.on('connection', (socket) => {
         }
       }
       const { rideId, location } = data;
-      if (!rideId || !location || typeof location !== 'object' || 
-          location.lat === undefined || location.lng === undefined) {
+      if (!rideId || !location || typeof location !== 'object' ||
+        location.lat === undefined || location.lng === undefined) {
         socket.emit('error', { message: 'Invalid location data' });
         return;
       }
