@@ -13,7 +13,8 @@ async function sendOTP(OTP, recipientNumber) {
   const payload = {
     sender_id: BESTBULK_SENDER_ID,
     to: recipients,
-    message: `Verify it's you: ${OTP}`,
+    message: `Your NovaRide OTP is ${OTP}. It expires in 60 seconds. Don't share this code with anyone. If you didn't request it, ignore this message.
+`,
     route: 'standard',
     source_url: `${env.BASE_URL}/api/auth/forgot-password`, // Optional: Add your source URL for better deliverability
   };
@@ -34,7 +35,7 @@ async function sendOTP(OTP, recipientNumber) {
       console.error('BestBulkSMS Error: request timeout');
       throw new Error('BestBulkSMS request timed out');
     }
-    
+
     const errorMessage = error.response?.data || error.message;
     console.error('BestBulkSMS Error:', errorMessage);
     throw new Error(`BestBulkSMS Error: ${JSON.stringify(errorMessage)}`);
