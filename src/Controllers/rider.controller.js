@@ -204,7 +204,8 @@ const getNearbyDrivers = async (req, res) => {
           $maxDistance: parseInt(maxDistance)
         }
       },
-      isAvailable: true,
+      // Use rider availability flag as the source of truth for "online/available" drivers
+      isAvailable: { $eq: true },
       // isVerified: true // Relaxed for testing
     }).populate('riderInfo', 'firstname lastname profilePic');
 

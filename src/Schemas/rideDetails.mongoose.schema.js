@@ -9,9 +9,11 @@ const rideDetailsSchema = new mongoose.Schema({
   distance: { type: Number, required: true }, // in km
   rideStatus: {
     type: String,
-    enum: ['pending', 'waiting_for_acceptance', 'accepted', 'at_pickup', 'starting', 'in_progress', 'awaiting_completion', 'completed', 'cancelled'],
+    enum: ['pending', 'waiting_for_acceptance', 'accepted', 'at_pickup', 'starting', 'in_progress', 'awaiting_completion', 'completed', 'cancelled', 'expired', 'timed_out'],
     default: 'pending'
   },
+  expiresAt: { type: Date },
+  cancellationReason: { type: String },
   paymentStatus: {
     type: String,
     enum: ['pending', 'completed', 'failed', 'cancelled'],

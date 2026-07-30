@@ -1,38 +1,40 @@
-const axios = require('axios');
-const env = require('../Configs/env');
+/**
+ * Location Controller
+ *
+ * Thin HTTP layer. All Google Maps logic lives in googleMapsService.
+ * Routes are unchanged so the frontend requires no URL updates.
+ */
 
+const googleMapsService = require('../Services/googleMapsService');
+
+// ─────────────────────────────────────────────────────────
+// GET /location/autocomplete?q=&limit=
+// Used by: frontend autocomplete dropdown (pickup + destination)
+// ─────────────────────────────────────────────────────────
 const autocomplete = async (req, res, next) => {
-  const { q, limit, viewbox } = req.query;
+  const { q, limit } = req.query;
 
   if (!q || q.trim() === '') {
     return res.status(400).json({ success: false, message: 'Query string (q) is required' });
   }
 
   try {
-    const response = await axios.get('https://us1.locationiq.com/v1/autocomplete', {
-      params: {
-        key: env.LOCATIONIQ_API_KEY,
-        q,
-        limit: limit || 5,
-        dedupe: 1,
-        normalizeaddress: 1,
-        viewbox: viewbox || '3.975,7.458,3.833,7.325', // default: Ibadan
-        bounded: 1,
-        countrycodes: 'ng', // Nigeria
-      },
-    });
-
-    return res.status(200).json(response.data);
+    const results = await googleMapsService.searchPlaces(q, parseInt(limit, 10) || 5);
+    return res.status(200).json(results);
   } catch (error) {
-    console.error('LocationIQ Autocomplete proxy error:', error.message);
-    return res.status(error.response?.status || 500).json({
+    console.error('[LocationController] autocomplete error:', error.message);
+    return res.status(error.status || 500).json({
       success: false,
-      message: 'Failed to fetch suggestions from Location service',
-      error: error.response?.data || error.message,
+      message: 'Failed to fetch suggestions from location service',
+      error: error.message,
     });
   }
 };
 
+// ─────────────────────────────────────────────────────────
+// GET /location/reverse?lat=&lon=
+// Used by: "Use My Location" button (reverse geocodes GPS coords)
+// ─────────────────────────────────────────────────────────
 const reverse = async (req, res, next) => {
   const { lat, lon } = req.query;
 
@@ -41,26 +43,22 @@ const reverse = async (req, res, next) => {
   }
 
   try {
-    const response = await axios.get('https://us1.locationiq.com/v1/reverse.php', {
-      params: {
-        key: env.LOCATIONIQ_API_KEY,
-        lat,
-        lon,
-        format: 'json',
-      },
-    });
-
-    return res.status(200).json(response.data);
+    const result = await googleMapsService.reverseGeocode(lat, lon);
+    return res.status(200).json(result);
   } catch (error) {
-    console.error('LocationIQ Reverse Geocoding proxy error:', error.message);
-    return res.status(error.response?.status || 500).json({
+    console.error('[LocationController] reverse geocode error:', error.message);
+    return res.status(error.status || 500).json({
       success: false,
-      message: 'Failed to reverse geocode from Location service',
-      error: error.response?.data || error.message,
+      message: 'Failed to reverse geocode from location service',
+      error: error.message,
     });
   }
 };
 
+// ─────────────────────────────────────────────────────────
+// GET /location/search?q=
+// Used by: handleFare() — geocodes typed address to lat/lng
+// ─────────────────────────────────────────────────────────
 const search = async (req, res, next) => {
   const { q } = req.query;
 
@@ -69,25 +67,23 @@ const search = async (req, res, next) => {
   }
 
   try {
-    const response = await axios.get('https://us1.locationiq.com/v1/search.php', {
-      params: {
-        key: env.LOCATIONIQ_API_KEY,
-        q,
-        format: 'json',
-      },
-    });
-
-    return res.status(200).json(response.data);
+    const results = await googleMapsService.geocodeAddress(q);
+    return res.status(200).json(results);
   } catch (error) {
-    console.error('LocationIQ Forward Geocoding proxy error:', error.message);
-    return res.status(error.response?.status || 500).json({
+    console.error('[LocationController] search/geocode error:', error.message);
+    return res.status(error.status || 500).json({
       success: false,
-      message: 'Failed to geocode address from Location service',
-      error: error.response?.data || error.message,
+      message: 'Failed to geocode address from location service',
+      error: error.message,
     });
   }
 };
 
+// ─────────────────────────────────────────────────────────
+// GET /location/directions/driving/:coordinates
+// Used by: calculateDistanceAndETA() in reverseGeo.js
+// Coordinates format: "originLng,originLat;destLng,destLat"
+// ─────────────────────────────────────────────────────────
 const directions = async (req, res, next) => {
   const { coordinates } = req.params;
 
@@ -96,22 +92,14 @@ const directions = async (req, res, next) => {
   }
 
   try {
-    const response = await axios.get(`https://us1.locationiq.com/v1/directions/driving/${coordinates}`, {
-      params: {
-        key: env.LOCATIONIQ_API_KEY,
-        geometries: 'geojson',
-        overview: 'simplified',
-        alternatives: false,
-      },
-    });
-
-    return res.status(200).json(response.data);
+    const result = await googleMapsService.getDistanceAndDuration(coordinates);
+    return res.status(200).json(result);
   } catch (error) {
-    console.error('LocationIQ Directions proxy error:', error.message);
-    return res.status(error.response?.status || 500).json({
+    console.error('[LocationController] directions error:', error.message);
+    return res.status(error.status || 500).json({
       success: false,
-      message: 'Failed to calculate directions from Location service',
-      error: error.response?.data || error.message,
+      message: 'Failed to calculate directions from location service',
+      error: error.message,
     });
   }
 };

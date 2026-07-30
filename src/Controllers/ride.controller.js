@@ -2,6 +2,7 @@ const rideDetailsModel = require('../Schemas/rideDetails.mongoose.schema');
 const riderModel = require('../Schemas/rider.mongoose.schema');
 const userModel = require('../Schemas/user.schema.js');
 const transactionModel = require('../Schemas/transaction.mongoose.schema');
+const { ACTIVE_RIDE_STATUSES, buildRideExpiry, getRideTimeoutMs, getIncomingRideQuery, transitionRideToInactive } = require('../Services/rideLifecycle.service');
 
 //controller to create a ride
 const createRide = async (req, res) => {
@@ -33,7 +34,9 @@ const createRide = async (req, res) => {
       fare,
       distance,
       pickupCoordinates,
-      destinationCoordinates
+      destinationCoordinates,
+      rideStatus: 'pending',
+      expiresAt: buildRideExpiry(new Date(), getRideTimeoutMs())
     });
 
     await ride.save();
@@ -65,7 +68,6 @@ const createRide = async (req, res) => {
 const getRideById = async (req, res) => {
   try {
     const { id } = req.params;
-    const decodedToken = req.user;
 
     const ride = await rideDetailsModel.findById(id).populate('user', 'firstname lastname profilePic phone').populate({
       path: 'assignedDriver',
@@ -104,8 +106,13 @@ const assignDriver = async (req, res) => {
       return res.status(403).json({ message: 'Access denied: Unauthorized access to ride details' });
     }
 
+    if (!ACTIVE_RIDE_STATUSES.includes(ride.rideStatus)) {
+      return res.status(400).json({ message: 'This ride is no longer active' });
+    }
+
     ride.assignedDriver = driverId;
     ride.rideStatus = 'waiting_for_acceptance';
+    ride.expiresAt = buildRideExpiry(new Date(), getRideTimeoutMs());
     await ride.save();
 
     // Notify the specific driver via socket
@@ -149,6 +156,7 @@ const rejectRide = async (req, res) => {
     // Reset ride status and clear assigned driver
     ride.rideStatus = 'pending';
     ride.assignedDriver = null;
+    ride.expiresAt = buildRideExpiry(new Date(), getRideTimeoutMs());
     await ride.save();
 
     // Notify the passenger!
@@ -187,6 +195,26 @@ const updateRideStatus = async (req, res) => {
     const io = req.app.get('io');
         
     let ride;
+
+    const inactiveStatuses = ['cancelled', 'expired', 'timed_out'];
+
+    if (inactiveStatuses.includes(status)) {
+      const currentRide = await rideDetailsModel.findById(id);
+      if (!currentRide) return res.status(404).json({ message: 'Ride not found' });
+
+      ride = await transitionRideToInactive({
+        currentRide,
+        io,
+        status,
+        reason: status === 'cancelled' ? 'passenger_cancelled' : status,
+        broadcast: true
+      });
+
+      return res.status(200).json({
+        message: `Ride status updated to ${status}`,
+        ride
+      });
+    }
 
     if (status === 'in_progress') {
       // First fetch to check passenger funds without mutating
@@ -302,10 +330,7 @@ const getAvailableRides = async (req, res) => {
 
     // 2. Fetch rides assigned specifically to this rider that are waiting for acceptance
     const { limit = 20 } = req.query;
-    const rides = await rideDetailsModel.find({
-      assignedDriver: rider._id,
-      rideStatus: 'waiting_for_acceptance'
-    }).limit(parseInt(limit)).populate('user', 'firstname lastname profilePic');
+    const rides = await rideDetailsModel.find(getIncomingRideQuery({ riderId: rider._id })).limit(parseInt(limit)).populate('user', 'firstname lastname profilePic');
 
     return res.status(200).json({
       message: 'Incoming rides fetched successfully',
@@ -331,8 +356,13 @@ const acceptRide = async (req, res) => {
     const rider = await riderModel.findOne({ riderInfo: decodedToken.id }).populate('riderInfo', 'firstname lastname phone profilePic');
     if (!rider) return res.status(404).json({ message: 'Rider profile not found' });
 
+    if (!ACTIVE_RIDE_STATUSES.includes(ride.rideStatus)) {
+      return res.status(400).json({ message: 'This ride is no longer available for acceptance' });
+    }
+
     ride.rideStatus = 'accepted';
     ride.assignedDriver = rider._id;
+    ride.expiresAt = null;
     await ride.save();
 
     // Notify the passenger!
