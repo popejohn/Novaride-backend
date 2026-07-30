@@ -14,8 +14,9 @@ const env = cleanEnv(process.env, {
   FRONTEND_URL: str({default: ''}),
   ADMIN_CLIENT_URL: str({default: ''}),
   PAYSTACK_SECRET_KEY: str({ devDefault: '' }),
-  LOCATIONIQ_API_KEY: str(),
-  NODE_ENV: str({ choices: ['development', 'production', 'staging'], default: 'development' }),
+  GOOGLE_MAPS_API_KEY: str(),
+  LOCATIONIQ_API_KEY: str({ default: '' }), // deprecated — remove after migration is verified
+  NODE_ENV: str({ choices: ['development', 'production', 'staging', 'test'], default: 'development' }),
   BESTBULK_SMS_KEY: str(),
   BESTBULK_SENDER_ID: str({ default: 'NOVARIDE' }),
   RABBITMQ_URL: str(),
@@ -36,6 +37,7 @@ const env = cleanEnv(process.env, {
   RESEND_API_KEY: str({ default: '' }),
   RESEND_FROM_EMAIL: str({ default: '' }),
   BASE_URL: str({ default: '' }),
+  RIDE_REQUEST_TIMEOUT_MINUTES: num({ default: 5 }),
 });
 
 module.exports = env;

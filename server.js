@@ -7,6 +7,7 @@ const redis = require('redis');
 const { upstashRedis, upstashRedisReady } = require('./src/Configs/upstash');
 const connectDB = require('./src/Configs/connection');
 const env = require('./src/Configs/env');
+const { expirePendingRides } = require('./src/Services/rideLifecycle.service');
 // Global error handlers for uncaught exceptions and unhandled rejections
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
@@ -300,6 +301,12 @@ app.get('/', (req, res) => {
 });
 // Start the server
 const PORT = process.env.PORT || 5000;
+setInterval(() => {
+  expirePendingRides(io).catch((error) => {
+    console.error('Ride expiration job failed:', error.message);
+  });
+}, 60 * 1000);
+
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`)
 });

@@ -8,6 +8,7 @@ const { createOTP } = require('../Utils/createOTP');
 const { otpModel } = require('../Schemas/otp.model');
 const { sendOTP } = require('../Services/message.service');
 const { sendOtpEmail } = require('../Services/emailOTP.service');
+const { markPendingRidesInactiveForUser } = require('../Services/rideLifecycle.service');
 
 
 
@@ -83,6 +84,27 @@ const loginUserController = async (req, res) => {
   } catch (error) {
     console.error('Error logging in user:', error);
     return errorResponse(res, 401, 'Incorrect phone number or password');
+  }
+};
+
+const logoutUser = async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user?.id) {
+      return errorResponse(res, 401, 'User not authenticated');
+    }
+
+    await markPendingRidesInactiveForUser({
+      userId: user.id,
+      io: req.app.get('io'),
+      status: 'cancelled',
+      reason: 'user_logout'
+    });
+
+    return successResponse(res, 200, 'Logout successful');
+  } catch (error) {
+    console.error('Error during logout:', error);
+    return errorResponse(res, 500, 'Internal server error');
   }
 };
 
@@ -357,7 +379,7 @@ const verifyResetOtp = async (req, res) => {
     }
 
     // Verify OTP
-    const userId = await verifyOtpForPasswordReset(phone, otp);
+    await verifyOtpForPasswordReset(phone, otp);
 
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -379,9 +401,15 @@ const verifyResetOtp = async (req, res) => {
 };
 
 module.exports = {
-  registerUser, loginUserController,
-  authenticateUser, uploadProfilePic, upload,
-  updateProfile, changePassword, updateSecuritySettings,
+  registerUser,
+  loginUserController,
+  logoutUser,
+  authenticateUser,
+  uploadProfilePic,
+  upload,
+  updateProfile,
+  changePassword,
+  updateSecuritySettings,
   forgotPassword,
   resendOtp,
   verifyResetOtp,
