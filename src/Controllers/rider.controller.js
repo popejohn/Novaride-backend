@@ -3,6 +3,7 @@ const userModel = require('../Schemas/user.schema');
 const riderModel = require('../Schemas/rider.mongoose.schema');
 const rideDetailsModel = require('../Schemas/rideDetails.mongoose.schema');
 const { getUserByPhone } = require('../Models/auth.models');
+const { getActiveRiderMatchQuery } = require('../Services/riderPresence.service');
 
 //controller to get rider details
 const getRiderDetails = async (req, res) => {
@@ -193,8 +194,10 @@ const getNearbyDrivers = async (req, res) => {
       return res.status(400).json({ message: 'Latitude and longitude are required' });
     }
 
-    // Find drivers within the specified distance (in meters)
+    // Find only riders who are manually online, currently connected, and active within the heartbeat timeout.
     const drivers = await riderModel.find({
+      ...getActiveRiderMatchQuery(new Date()),
+      socketId: { $ne: null },
       location: {
         $near: {
           $geometry: {
@@ -203,10 +206,7 @@ const getNearbyDrivers = async (req, res) => {
           },
           $maxDistance: parseInt(maxDistance)
         }
-      },
-      // Use rider availability flag as the source of truth for "online/available" drivers
-      isAvailable: { $eq: true },
-      // isVerified: true // Relaxed for testing
+      }
     }).populate('riderInfo', 'firstname lastname profilePic');
 
     return res.status(200).json({

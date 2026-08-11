@@ -9,6 +9,7 @@ const { otpModel } = require('../Schemas/otp.model');
 const { sendOTP } = require('../Services/message.service');
 const { sendOtpEmail } = require('../Services/emailOTP.service');
 const { markPendingRidesInactiveForUser } = require('../Services/rideLifecycle.service');
+const { markRiderOffline } = require('../Services/riderPresence.service');
 
 
 
@@ -100,6 +101,8 @@ const logoutUser = async (req, res) => {
       status: 'cancelled',
       reason: 'user_logout'
     });
+
+    await markRiderOffline({ riderInfo: user.id, socketId: null });
 
     return successResponse(res, 200, 'Logout successful');
   } catch (error) {

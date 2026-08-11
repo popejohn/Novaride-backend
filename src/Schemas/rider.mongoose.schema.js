@@ -9,7 +9,9 @@ const riderSchema = new mongoose.Schema({
     type: { type: String, enum: ['Point'], default: 'Point' },
     coordinates: { type: [Number] }, // [longitude, latitude]
   },
-  isAvailable: { type: Boolean, default: true },
+  isAvailable: { type: Boolean, default: false },
+  socketId: { type: String, default: null },
+  lastSeenAt: { type: Date, default: null },
   isVerified: { type: Boolean, default: true },
   driverLicenseNumber: { type: String, required: true, unique: true },
   driverLicenseExpiry: { type: Date, required: true },
