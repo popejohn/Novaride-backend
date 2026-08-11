@@ -7,7 +7,9 @@ const redis = require('redis');
 const { upstashRedis, upstashRedisReady } = require('./src/Configs/upstash');
 const connectDB = require('./src/Configs/connection');
 const env = require('./src/Configs/env');
+const riderModel = require('./src/Schemas/rider.mongoose.schema');
 const { expirePendingRides } = require('./src/Services/rideLifecycle.service');
+const { setRiderPresence, markRiderOffline, sweepStaleRiders, HEARTBEAT_INTERVAL_MS } = require('./src/Services/riderPresence.service');
 // Global error handlers for uncaught exceptions and unhandled rejections
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
@@ -132,8 +134,28 @@ if (socketAdapterUrl) {
 app.set('io', io);
 // Socket.io connection tracking
 const connectedSockets = new Map();
+const riderSockets = new Map();
 let connectionCount = 0;
 const MAX_CONNECTIONS = 1000;
+
+const registerRiderSocket = (userId, socketId) => {
+  if (!userId || !socketId) return;
+  const userSockets = riderSockets.get(userId) || new Set();
+  userSockets.add(socketId);
+  riderSockets.set(userId, userSockets);
+};
+
+const unregisterRiderSocket = async (userId, socketId) => {
+  if (!userId || !socketId) return;
+  const userSockets = riderSockets.get(userId);
+  if (!userSockets) return;
+
+  userSockets.delete(socketId);
+  if (userSockets.size === 0) {
+    riderSockets.delete(userId);
+    await markRiderOffline({ riderInfo: userId, socketId });
+  }
+};
 // Handle Socket.io connections with error handling and rate limiting
 io.on('connection', (socket) => {
   // Authenticate socket via JWT token in handshake
@@ -255,9 +277,64 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: 'Failed to update location' });
     }
   });
-  socket.on('disconnect', (reason) => {
+  socket.on('rider:presence', async ({ online = false } = {}) => {
+    try {
+      if (!socket.user || !socket.user.id || !socket.user.role?.includes('rider')) {
+        return;
+      }
+
+      const isOnline = Boolean(online);
+      if (isOnline) {
+        registerRiderSocket(socket.user.id, socket.id);
+        await setRiderPresence({
+          riderInfo: socket.user.id,
+          isAvailable: true,
+          socketId: socket.id,
+          lastSeenAt: new Date()
+        });
+      } else {
+        await unregisterRiderSocket(socket.user.id, socket.id);
+      }
+    } catch (error) {
+      console.error('Error updating rider presence:', error);
+    }
+  });
+
+  socket.on('heartbeat', async () => {
+    try {
+      if (!socket.user || !socket.user.id || !socket.user.role?.includes('rider')) {
+        return;
+      }
+
+      const rider = await riderModel.findOne({ riderInfo: socket.user.id });
+      if (!rider || !rider.isAvailable) {
+        return;
+      }
+
+      await setRiderPresence({
+        riderInfo: socket.user.id,
+        isAvailable: true,
+        socketId: socket.id,
+        lastSeenAt: new Date()
+      });
+    } catch (error) {
+      console.error('Error processing rider heartbeat:', error);
+    }
+  });
+
+  socket.on('disconnect', async (reason) => {
     connectionCount--;
     connectedSockets.delete(socket.id);
+
+    try {
+      const userId = socket.user && socket.user.id;
+      if (userId && socket.user.role?.includes('rider')) {
+        await unregisterRiderSocket(userId, socket.id);
+      }
+    } catch (error) {
+      console.error('Error handling rider socket disconnect:', error);
+    }
+
     console.log(`User disconnected: ${socket.id} (Reason: ${reason}) (Total: ${connectionCount})`);
   });
   // Handle connection timeout
@@ -306,6 +383,12 @@ setInterval(() => {
     console.error('Ride expiration job failed:', error.message);
   });
 }, 60 * 1000);
+
+setInterval(() => {
+  sweepStaleRiders().catch((error) => {
+    console.error('Stale rider sweep failed:', error.message);
+  });
+}, HEARTBEAT_INTERVAL_MS);
 
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`)
