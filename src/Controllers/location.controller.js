@@ -42,6 +42,10 @@ const reverse = async (req, res, next) => {
     return res.status(400).json({ success: false, message: 'Latitude (lat) and Longitude (lon) are required' });
   }
 
+  console.log(`\n==================================================`);
+  console.log(`📍 [DEVICE LOCATION FETCHED] Lat: ${lat}, Lon: ${lon}`);
+  console.log(`==================================================\n`);
+
   try {
     const result = await googleMapsService.reverseGeocode(lat, lon);
     return res.status(200).json(result);

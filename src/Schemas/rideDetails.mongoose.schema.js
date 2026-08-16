@@ -22,7 +22,7 @@ const rideDetailsSchema = new mongoose.Schema({
   paymentReference: { type: String }, // Paystack reference
   paymentMethod: { 
     type: String,
-    enum: ['wallet', 'card', 'bank_transfer'],
+    enum: ['wallet'],
     default: 'wallet'
   },
   pickupCoordinates: {

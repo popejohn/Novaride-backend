@@ -5,6 +5,8 @@ const rideDetailsModel = require('../Schemas/rideDetails.mongoose.schema');
 const { getUserByPhone } = require('../Models/auth.models');
 const { getActiveRiderMatchQuery } = require('../Services/riderPresence.service');
 
+const MAX_NEARBY_RIDER_DISTANCE_METERS = 5000;
+
 //controller to get rider details
 const getRiderDetails = async (req, res) => {
   try {
@@ -140,29 +142,22 @@ const updateRiderLocation = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const { latitude, longitude, isAvailable } = req.body;
+    const { latitude, longitude } = req.body;
 
-    // Validate coordinates (if providing them)
-    if (isAvailable !== false && (typeof latitude !== 'number' || typeof longitude !== 'number')) {
+    // Validate coordinates
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
       return res.status(400).json({ message: 'Invalid coordinates' });
     }
 
-    // Update rider location and availability
-    let updateData = {};
-    if (isAvailable === false) {
-      updateData = {
-        $unset: { location: '' },
-        isAvailable: false
-      };
-    } else {
-      updateData = {
-        location: {
-          type: 'Point',
-          coordinates: [longitude, latitude] // MongoDB GeoJSON format: [lng, lat]
-        },
-        isAvailable: true
-      };
-    }
+    // Update only location and lastSeenAt (for presence heartbeat)
+    // Do NOT update isAvailable here - that should only change via dedicated endpoint
+    const updateData = {
+      location: {
+        type: 'Point',
+        coordinates: [longitude, latitude] // MongoDB GeoJSON format: [lng, lat]
+      },
+      lastSeenAt: new Date() // Update heartbeat timestamp
+    };
 
     const rider = await riderModel.findOneAndUpdate(
       { riderInfo: user._id },
@@ -185,26 +180,120 @@ const updateRiderLocation = async (req, res) => {
   }
 };
 
+// New controller to handle only status changes (online/offline)
+const updateRiderStatus = async (req, res) => {
+  try {
+    const decodedToken = req.user;
+
+    if (!decodedToken.role.includes('rider')) {
+      return res.status(403).json({ message: 'Access denied: Not a rider' });
+    }
+
+    const phone = decodedToken.phone;
+    const user = await getUserByPhone(phone);
+
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const { isAvailable, latitude, longitude } = req.body;
+
+    if (typeof isAvailable !== 'boolean') {
+      return res.status(400).json({ message: 'isAvailable must be a boolean' });
+    }
+
+    // Update only status and location if coming online
+    let updateData = {
+      isAvailable: isAvailable,
+      lastSeenAt: new Date()
+    };
+
+    // If going online, require coordinates
+    if (isAvailable === true) {
+      if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+        return res.status(400).json({ message: 'Coordinates required when going online' });
+      }
+      updateData.location = {
+        type: 'Point',
+        coordinates: [longitude, latitude]
+      };
+    } else {
+      // If going offline, clear location
+      updateData.$unset = { location: '' };
+    }
+
+    const rider = await riderModel.findOneAndUpdate(
+      { riderInfo: user._id },
+      updateData,
+      { new: true }
+    );
+
+    if (!rider) {
+      return res.status(404).json({ message: 'Rider profile not found' });
+    }
+
+    const io = req.app.get('io');
+    if (io) {
+      if (isAvailable) {
+        io.emit('riderOnline', {
+          riderId: String(user._id),
+          riderName: `${user.firstname || 'Unknown'} ${user.lastname || ''}`.trim(),
+          vehicleType: rider.vehicleType,
+          plateNumber: rider.plateNumber,
+          location: rider.location,
+          profilePic: user.profilePic,
+          isAvailable: true,
+          timestamp: new Date()
+        });
+      } else {
+        io.emit('riderOffline', {
+          riderId: String(user._id),
+          timestamp: new Date()
+        });
+      }
+    }
+
+    return res.status(200).json({
+      message: `Rider status updated to ${isAvailable ? 'online' : 'offline'}`,
+      rider: rider
+    });
+
+  } catch (error) {
+    console.error('Error updating rider status:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
 //controller to get nearby drivers
 const getNearbyDrivers = async (req, res) => {
   try {
-    const { lat, lng, maxDistance = 5000 } = req.query;
+    const { lat, lng } = req.query;
+    const latitude = Number(lat);
+    const longitude = Number(lng);
 
-    if (!lat || !lng) {
-      return res.status(400).json({ message: 'Latitude and longitude are required' });
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+        latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return res.status(400).json({ message: 'Valid latitude and longitude are required' });
     }
 
-    // Find only riders who are manually online, currently connected, and active within the heartbeat timeout.
+    // The list is real-time availability data. Prevent HTTP caching from returning a stale 304 response.
+    res.set({
+      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+      Pragma: 'no-cache',
+      Expires: '0'
+    });
+
+    // A fresh server heartbeat is the connection proof. socketId is only an
+    // ephemeral diagnostic value and may lag a successful socket reconnect.
     const drivers = await riderModel.find({
       ...getActiveRiderMatchQuery(new Date()),
-      socketId: { $ne: null },
       location: {
         $near: {
           $geometry: {
             type: 'Point',
-            coordinates: [parseFloat(lng), parseFloat(lat)]
+            coordinates: [longitude, latitude]
           },
-          $maxDistance: parseInt(maxDistance)
+          $maxDistance: MAX_NEARBY_RIDER_DISTANCE_METERS
         }
       }
     }).populate('riderInfo', 'firstname lastname profilePic');
@@ -220,4 +309,4 @@ const getNearbyDrivers = async (req, res) => {
   }
 };
 
-module.exports = { getRiderDetails, createRiderProfile, updateRiderLocation, getNearbyDrivers };
+module.exports = { getRiderDetails, createRiderProfile, updateRiderLocation, updateRiderStatus, getNearbyDrivers };

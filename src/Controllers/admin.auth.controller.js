@@ -1,18 +1,24 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Admin = require('../Models/admin.model');
+const env = require('../Configs/env');
 
 // --- Controllers (inlined from Admin/adminBackend/src/Controllers/*)
 const adminSignup = async (req, res) => {
   try {
     const { firstname, lastname, email, password, role } = req.body;
 
+    const existingAdmin = await Admin.exists({});
+    if (existingAdmin) {
+      return res.status(403).json({ message: 'Admin signup is disabled after initial setup' });
+    }
+
     if (!firstname || !lastname || !email || !password) {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
-    const existingAdmin = await Admin.findOne({ email: email.toLowerCase() });
-    if (existingAdmin) {
+    const existingAdminWithEmail = await Admin.findOne({ email: email.toLowerCase() });
+    if (existingAdminWithEmail) {
       return res.status(409).json({ message: 'Admin account with this email already exists' });
     }
 
@@ -29,7 +35,7 @@ const adminSignup = async (req, res) => {
 
     const token = jwt.sign(
       { id: newAdmin._id, email: newAdmin.email, role: newAdmin.role },
-      process.env.JWT_SECRET || 'admin_secret_key_nova_crest_999',
+      env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
@@ -71,7 +77,7 @@ const adminLogin = async (req, res) => {
 
     const token = jwt.sign(
       { id: admin._id, email: admin.email, role: admin.role },
-      process.env.JWT_SECRET || 'admin_secret_key_nova_crest_999',
+      env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
