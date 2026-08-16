@@ -61,20 +61,20 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
-  // Allow requests without an Origin header
-  // (Postman, mobile apps, server-to-server requests)
-  if (!origin) {
-    return callback(null, true);
-  }
-  const allowedOrigins = [
-    process.env.FRONTEND_URL,
-    process.env.ADMIN_CLIENT_URL
-  ].filter(Boolean);
-  if (allowedOrigins.includes(origin)) {
-    return callback(null, true);
-  }
-  return callback(new Error(`CORS blocked for origin: ${origin}`));
-},
+      // Allow requests without an Origin header
+      // (Postman, mobile apps, server-to-server requests)
+      if (!origin) {
+        return callback(null, true);
+      }
+      const allowedOrigins = [
+        process.env.FRONTEND_URL,
+        process.env.ADMIN_CLIENT_URL
+      ].filter(Boolean);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
     credentials: true,
     methods: ['GET', 'POST']
   },
@@ -138,6 +138,18 @@ const riderSockets = new Map();
 let connectionCount = 0;
 const MAX_CONNECTIONS = 1000;
 
+const getRideAccess = async (rideId, userId) => {
+  const ride = await require('./src/Schemas/rideDetails.mongoose.schema').findById(rideId).select('user assignedDriver rideStatus');
+  if (!ride) return { ride: null, isPassenger: false, isAssignedRider: false };
+
+  const isPassenger = String(ride.user) === String(userId);
+  const isAssignedRider = ride.assignedDriver
+    ? Boolean(await riderModel.exists({ _id: ride.assignedDriver, riderInfo: userId }))
+    : false;
+
+  return { ride, isPassenger, isAssignedRider };
+};
+
 const registerRiderSocket = (userId, socketId) => {
   if (!userId || !socketId) return;
   const userSockets = riderSockets.get(userId) || new Set();
@@ -154,6 +166,13 @@ const unregisterRiderSocket = async (userId, socketId) => {
   if (userSockets.size === 0) {
     riderSockets.delete(userId);
     await markRiderOffline({ riderInfo: userId, socketId });
+    
+    // Broadcast rider offline event to all connected passengers
+    io.emit('riderOffline', {
+      riderId: userId,
+      timestamp: new Date()
+    });
+    console.log(`[Socket] Rider ${userId} went offline and broadcast notification`);
   }
 };
 // Handle Socket.io connections with error handling and rate limiting
@@ -190,7 +209,7 @@ io.on('connection', (socket) => {
   // Join a room based on the user's role/id with error handling
   socket.on('join', (userId) => {
     try {
-      if (!userId || typeof userId !== 'string') {
+      if (!userId || typeof userId !== 'string' || String(socket.user.id) !== userId) {
         socket.emit('error', { message: 'Invalid user ID' });
         return;
       }
@@ -202,10 +221,16 @@ io.on('connection', (socket) => {
     }
   });
   // Join a specific ride room for live tracking with error handling
-  socket.on('joinRide', (rideId) => {
+  socket.on('joinRide', async (rideId) => {
     try {
       if (!rideId || typeof rideId !== 'string') {
         socket.emit('error', { message: 'Invalid ride ID' });
+        return;
+      }
+
+      const { ride, isPassenger, isAssignedRider } = await getRideAccess(rideId, socket.user.id);
+      if (!ride || (!isPassenger && !isAssignedRider)) {
+        socket.emit('error', { message: 'You are not allowed to join this ride' });
         return;
       }
       socket.join(rideId);
@@ -258,10 +283,22 @@ io.on('connection', (socket) => {
           return;
         }
       }
-      const { rideId, location } = data;
+      const { rideId, location } = data || {};
       if (!rideId || !location || typeof location !== 'object' || 
           location.lat === undefined || location.lng === undefined) {
         socket.emit('error', { message: 'Invalid location data' });
+        return;
+      }
+      if (!Number.isFinite(location.lat) || !Number.isFinite(location.lng) ||
+          location.lat < -90 || location.lat > 90 || location.lng < -180 || location.lng > 180) {
+        socket.emit('error', { message: 'Invalid location coordinates' });
+        return;
+      }
+
+      const { ride, isAssignedRider } = await getRideAccess(rideId, socket.user.id);
+      const trackableStatuses = ['accepted', 'at_pickup', 'starting', 'in_progress', 'awaiting_completion'];
+      if (!ride || !isAssignedRider || !trackableStatuses.includes(ride.rideStatus)) {
+        socket.emit('error', { message: 'You are not allowed to update this ride location' });
         return;
       }
       // Broadcast to everyone in the ride room EXCEPT the sender
@@ -272,7 +309,7 @@ io.on('connection', (socket) => {
       socket.emit('error', { message: 'Failed to update location' });
     }
   });
-  socket.on('rider:presence', async ({ online = false } = {}) => {
+  socket.on('rider:presence', async ({ online = false, location = null } = {}) => {
     try {
       if (!socket.user || !socket.user.id || !socket.user.role?.includes('rider')) {
         return;
@@ -281,12 +318,41 @@ io.on('connection', (socket) => {
       const isOnline = Boolean(online);
       if (isOnline) {
         registerRiderSocket(socket.user.id, socket.id);
-        await setRiderPresence({
-          riderInfo: socket.user.id,
-          isAvailable: true,
-          socketId: socket.id,
-          lastSeenAt: new Date()
-        });
+
+        const normalizedLocation = location && typeof location === 'object' && Number.isFinite(location.lat) && Number.isFinite(location.lng)
+          ? {
+            type: 'Point',
+            coordinates: [location.lng, location.lat]
+          }
+          : null;
+
+        const updatedRider = await riderModel.findOneAndUpdate(
+          { riderInfo: socket.user.id },
+          {
+            $set: {
+              isAvailable: true,
+              lastSeenAt: new Date(),
+              socketId: socket.id,
+              ...(normalizedLocation ? { location: normalizedLocation } : {})
+            }
+          },
+          { new: true }
+        ).populate('riderInfo', 'firstname lastname profilePic');
+
+        const broadcastLocation = updatedRider?.location || normalizedLocation;
+        if (updatedRider && broadcastLocation) {
+          io.emit('riderOnline', {
+            riderId: socket.user.id,
+            riderName: `${updatedRider.riderInfo?.firstname || socket.user.firstname || 'Unknown'} ${updatedRider.riderInfo?.lastname || socket.user.lastname || ''}`.trim(),
+            vehicleType: updatedRider.vehicleType,
+            plateNumber: updatedRider.plateNumber,
+            location: broadcastLocation,
+            profilePic: updatedRider.riderInfo?.profilePic || socket.user.profilePic,
+            isAvailable: true,
+            timestamp: new Date()
+          });
+          console.log(`[Socket] Rider ${socket.user.id} came online and broadcast notification`);
+        }
       } else {
         await unregisterRiderSocket(socket.user.id, socket.id);
       }
@@ -364,7 +430,7 @@ function gracefulShutdown(signal) {
     console.error('Forced shutdown after timeout');
     process.exit(1);
   }, 30000);
-};
+}
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 // Define a simple route
@@ -386,5 +452,5 @@ setInterval(() => {
 }, HEARTBEAT_INTERVAL_MS);
 
 server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`)
+  console.log(`Server is running on port ${PORT}`);
 });

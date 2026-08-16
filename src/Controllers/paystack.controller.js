@@ -1,7 +1,6 @@
 const userModel = require('../Schemas/user.schema.js');
 const transactionModel = require('../Schemas/transaction.mongoose.schema');
 const installmentModel = require('../Schemas/installment.mongoose.schema');
-const rideModel = require('../Schemas/rideDetails.mongoose.schema');
 const axios = require('axios');
 
 const env = require('../Configs/env.js');
@@ -146,91 +145,4 @@ const verifyInstallmentPayment = async (req, res) => {
   }
 };
 
-const verifyRidePayment = async (req, res) => {
-  try {
-    const { reference, rideId } = req.body;
-    const decodedToken = req.user;
-
-    if (!reference) {
-      return res.status(400).json({ message: 'Transaction reference is required' });
-    }
-
-    if (!rideId) {
-      return res.status(400).json({ message: 'Ride ID is required' });
-    }
-
-    // Verify with Paystack
-    const paystackResponse = await axios.get(`https://api.paystack.co/transaction/verify/${reference}`, {
-      headers: {
-        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`
-      }
-    });
-
-    const paymentData = paystackResponse.data.data;
-
-    if (paymentData.status !== 'success') {
-      return res.status(400).json({ message: 'Payment was not successful' });
-    }
-
-    // Paystack amount is in kobo, convert to Naira
-    const amountInNaira = paymentData.amount / 100;
-
-    // Find user
-    const user = await userModel.findById(decodedToken.id);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    // Find ride
-    const ride = await rideModel.findById(rideId);
-    if (!ride) {
-      return res.status(404).json({ message: 'Ride not found' });
-    }
-
-    // Verify the fare matches
-    if (amountInNaira !== ride.fare) {
-      return res.status(400).json({ 
-        message: 'Payment amount does not match ride fare',
-        expected: ride.fare,
-        received: amountInNaira
-      });
-    }
-
-    // ATOMIC LOCK: Create transaction record FIRST. If 'reference' is duplicate, it throws E11000.
-    try {
-      await transactionModel.create({
-        user: user._id,
-        type: 'debit',
-        amount: amountInNaira,
-        description: `Ride payment - ${ride.pickupLocation} to ${ride.destination}`,
-        status: 'completed',
-        reference: reference
-      });
-    } catch (txError) {
-      if (txError.code === 11000) {
-        return res.status(400).json({ message: 'Transaction reference already processed' });
-      }
-      throw txError;
-    }
-
-    // Note: The user paid via Paystack (card), so we DO NOT deduct from their wallet.
-        
-    // Update ride with payment status
-    ride.paymentStatus = 'completed';
-    ride.paymentReference = reference;
-    ride.paymentMethod = 'card';
-    await ride.save();
-
-    return res.status(200).json({
-      message: 'Ride payment verified successfully',
-      walletBalance: user.wallet, // Wallet balance remains unchanged
-      ride: ride
-    });
-
-  } catch (error) {
-    console.error('Error verifying ride payment:', error.response?.data || error.message);
-    return res.status(500).json({ message: 'Server error during verification', error: error.message });
-  }
-};
-
-module.exports = { verifyWalletFunding, verifyInstallmentPayment, verifyRidePayment };
+module.exports = { verifyWalletFunding, verifyInstallmentPayment };

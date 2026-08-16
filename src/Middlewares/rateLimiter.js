@@ -102,7 +102,7 @@ const createStore = (prefix) => {
 const generalLimiter = rateLimit({
   store: createStore('rl:general:'),
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each key to 100 requests per windowMs
+  max: 300, // limit each key to 300 requests per windowMs (supports polling)
   keyGenerator,
   validate: false,
   standardHeaders: true,
@@ -112,11 +112,36 @@ const generalLimiter = rateLimit({
     message: 'Too many requests, please try again later'
   },
   skip: (req) => {
-    // Skip rate limiting for health checks
+    // Skip rate limiting for health checks and nearby-drivers (high-frequency polling)
     return req.path.startsWith('/health');
   },
   handler: (req, res) => {
     console.warn(`Rate limit exceeded for key: ${keyGenerator(req)}, Path: ${req.path}`);
+    res.status(429).json({
+      success: false,
+      message: 'Too many requests, please try again later'
+    });
+  }
+});
+
+// Special rate limiter for nearby-drivers endpoint (allows frequent polling)
+const nearbyDriversLimiter = rateLimit({
+  store: createStore('rl:nearby-drivers:'),
+  windowMs: 60 * 1000, // 1 minute window
+  max: 60, // 60 requests per minute = 1 request per second (enough for polling + spikes)
+  keyGenerator,
+  validate: false,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many requests, please try again later'
+  },
+  skip: (req) => {
+    return req.path.startsWith('/health');
+  },
+  handler: (req, res) => {
+    console.warn(`Rate limit exceeded for key: ${keyGenerator(req)}, Path: /nearby-drivers`);
     res.status(429).json({
       success: false,
       message: 'Too many requests, please try again later'
@@ -242,5 +267,6 @@ module.exports = {
   paymentLimiter,
   rideLimiter,
   sensitiveLimiter,
-  createAccountLimiter
+  createAccountLimiter,
+  nearbyDriversLimiter
 };

@@ -1,6 +1,5 @@
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const mongoose = require('mongoose');
+const env = require('../Configs/env');
 
 
 // --- Middleware (inlined from Admin/adminBackend/src/Middlewares/auth.middleware.js)
@@ -12,7 +11,7 @@ const authenticateAdmin = async (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'admin_secret_key_nova_crest_999');
+    const decoded = jwt.verify(token, env.JWT_SECRET);
 
     req.admin = decoded;
     next();

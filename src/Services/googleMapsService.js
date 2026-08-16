@@ -109,12 +109,17 @@ const searchPlaces = async (input, limit = 5) => {
         input,
         includedRegionCodes: ['ng'], // restrict to Nigeria
         languageCode: 'en',
+        locationBias: {
+          circle: {
+            center: { latitude: 7.3775, longitude: 3.9470 }, // Ibadan center bias
+            radius: 50000.0, // 50km radius bias
+          },
+        },
       },
       {
         headers: {
           'Content-Type': 'application/json',
           'X-Goog-Api-Key': env.GOOGLE_MAPS_API_KEY,
-          // Request only the fields we need — reduces billing cost
           'X-Goog-FieldMask':
             'suggestions.placePrediction.text,suggestions.placePrediction.placeId,suggestions.placePrediction.structuredFormat',
         },
@@ -206,8 +211,15 @@ const geocodeAddress = async (address) => {
 //    Returns: { display_name }
 //    Shape mirrors LocationIQ /reverse.php
 // ─────────────────────────────────────────────
-const reverseGeocode = async (lat, lng) => {
-  console.info(`[GoogleMaps] reverseGeocode: (${lat}, ${lng})`);
+const reverseGeocode = async (rawLat, rawLng) => {
+  const lat = parseFloat(rawLat);
+  const lng = parseFloat(rawLng);
+
+  if (isNaN(lat) || isNaN(lng)) {
+    throw buildError('Invalid latitude or longitude coordinates', 400);
+  }
+
+  console.log(`📍 [GOOGLE MAPS REVERSE GEOCODE] Target Coords: Lat = ${lat}, Lng = ${lng}`);
 
   try {
     const response = await axios.get(GEOCODING_BASE, {
@@ -215,7 +227,6 @@ const reverseGeocode = async (lat, lng) => {
         latlng: `${lat},${lng}`,
         key: env.GOOGLE_MAPS_API_KEY,
         language: 'en',
-        result_type: 'street_address|route|neighborhood|locality',
       },
     });
 
@@ -231,10 +242,11 @@ const reverseGeocode = async (lat, lng) => {
       throw buildError(`Reverse Geocoding API returned status: ${status}`, 502, response.data);
     }
 
-    const best = results[0];
+    // Pick the most specific formatted address (prefer exact street/premise over broad plus code if available)
+    const best = results.find((r) => Array.isArray(r.types) && !r.types.includes('plus_code')) || results[0];
     const display_name = best ? best.formatted_address : null;
 
-    console.info(`[GoogleMaps] reverseGeocode: "${display_name}"`);
+    console.log(`🏠 [RESOLVED ADDRESS] "${display_name}"`);
     return { display_name };
   } catch (error) {
     if (error.status) throw error;

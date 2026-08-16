@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const env = require('../Configs/env');
+const { upstashRedis, upstashRedisReady } = require('../Configs/upstash');
 const router = express.Router();
 
 // Health check endpoint
@@ -148,17 +149,20 @@ router.get('/metrics', async (req, res) => {
   }
 });
 
-router.get("/redis", async (req, res) => {
+router.get('/redis', async (req, res) => {
   try {
-    await upstashRedis.set("health", Date.now().toString(), { ex: 10 });
+    if (!upstashRedisReady || !upstashRedis) {
+      return res.status(503).json({ status: 'unhealthy', redis: 'not configured' });
+    }
+    await upstashRedis.set('health', Date.now().toString(), { ex: 10 });
 
     res.json({
-      status: "healthy",
-      redis: "connected",
+      status: 'healthy',
+      redis: 'connected',
     });
   } catch (err) {
     res.status(500).json({
-      status: "unhealthy",
+      status: 'unhealthy',
       redis: err.message,
     });
   }
