@@ -8,7 +8,6 @@
  *  - Places API (New)  — autocomplete   [places.googleapis.com]
  *  - Geocoding API     — forward + reverse geocoding  [maps.googleapis.com]
  *  - Routes API        — distance and duration  [routes.googleapis.com]
- *    └─ Falls back to Haversine + speed estimate if Routes API is not enabled
  */
 
 const axios = require('axios');
@@ -26,20 +25,6 @@ const buildError = (message, status = 500, raw = null) => {
   err.status = status;
   err.raw = raw;
   return err;
-};
-
-// ─────────────────────────────────────────────
-// Helper: Haversine distance (metres) between two lat/lng points
-// ─────────────────────────────────────────────
-const haversineDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371000; // Earth radius in metres
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
 // Helper: resolve lat/lon for a placeId or address string
@@ -256,9 +241,7 @@ const reverseGeocode = async (rawLat, rawLng) => {
 };
 
 // ─────────────────────────────────────────────
-// 4. Distance + Duration
-//    Primary:  Google Routes API (routes.googleapis.com)
-//    Fallback: Haversine formula + speed estimate (works with no extra API enabled)
+// 4. Distance + Duration via Google Routes API (routes.googleapis.com)
 //
 //    Accepts OSRM-style coordinate string: "originLng,originLat;destLng,destLat"
 //    Returns: { routes: [{ distance, duration }] }
@@ -323,42 +306,14 @@ const getDistanceAndDuration = async (coordinatesParam) => {
       return normalized;
     }
 
-    throw new Error('Routes API returned no route data');
+    throw buildError('Google Routes API returned no route data', 502);
   } catch (routesError) {
-    const isApiNotEnabled =
-      routesError.response?.data?.error?.status === 'PERMISSION_DENIED' ||
-      routesError.response?.status === 403;
+    if (routesError.status) throw routesError;
 
-    if (isApiNotEnabled) {
-      console.warn('[GoogleMaps] Routes API not enabled — falling back to Haversine calculation');
-    } else {
-      console.warn('[GoogleMaps] Routes API call failed, falling back to Haversine:', routesError.message);
-    }
-
-    // ── Fallback: Haversine + realistic urban speed estimate ─────────────
-    // Average urban driving speed in Nigeria: ~30 km/h (accounting for traffic)
-    const AVERAGE_SPEED_MS = 30 / 3.6; // 30 km/h in metres/second
-
-    const distanceMeters = Math.round(haversineDistance(originLat, originLng, destLat, destLng));
-    // Add 30% to straight-line distance for road routing factor
-    const roadDistanceMeters = Math.round(distanceMeters * 1.3);
-    const durationSeconds = Math.round(roadDistanceMeters / AVERAGE_SPEED_MS);
-
-    const normalized = {
-      routes: [
-        {
-          distance: roadDistanceMeters,
-          duration: durationSeconds,
-          distance_text: `${(roadDistanceMeters / 1000).toFixed(1)} km`,
-          duration_text: `${Math.round(durationSeconds / 60)} mins`,
-        },
-      ],
-    };
-
-    console.info(
-      `[GoogleMaps] getDistanceAndDuration (Haversine fallback): ${normalized.routes[0].distance_text} / ${normalized.routes[0].duration_text}`
-    );
-    return normalized;
+    const status = routesError.response?.status || 502;
+    const providerStatus = routesError.response?.data?.error?.status;
+    console.warn('[GoogleMaps] Routes API call failed:', providerStatus || routesError.message);
+    throw buildError('Unable to calculate a road route at this time', status, routesError.response?.data || routesError.message);
   }
 };
 

@@ -27,9 +27,11 @@ describe('ride pricing and request validation', () => {
     expect(isValidPoint({ type: 'Point', coordinates: [200, 6.6] })).toBe(false);
   });
 
-  test('rejects incomplete ride creation payloads', () => {
+  test('validates booking details without trusting client pricing fields', () => {
     expect(validateRideRequest(validRequest)).toBeNull();
-    expect(validateRideRequest({ ...validRequest, distance: -1 })).toBe('A valid ride distance is required');
+    expect(validateRideRequest({ ...validRequest, distance: -1, eta: -1, fare: 1 })).toBeNull();
+    expect(validateRideRequest({ ...validRequest, pickupCoordinates: { type: 'Point', coordinates: [200, 6.6] } }))
+      .toBe('Valid pickup and destination coordinates are required');
   });
 
   test('recognizes a passenger when the ride user has been populated', () => {

@@ -20,21 +20,13 @@ const isValidPoint = (point) => {
     longitude >= -180 && longitude <= 180 && latitude >= -90 && latitude <= 90;
 };
 
-const validateRideRequest = ({ pickupLocation, destination, eta, distance, pickupCoordinates, destinationCoordinates }) => {
+const validateRideRequest = ({ pickupLocation, destination, pickupCoordinates, destinationCoordinates }) => {
   if (typeof pickupLocation !== 'string' || !pickupLocation.trim() || typeof destination !== 'string' || !destination.trim()) {
     return 'Pickup and destination are required';
   }
 
-  if (!Number.isFinite(Number(eta)) || Number(eta) <= 0) {
-    return 'A valid estimated duration is required';
-  }
-
   if (!isValidPoint(pickupCoordinates) || !isValidPoint(destinationCoordinates)) {
     return 'Valid pickup and destination coordinates are required';
-  }
-
-  if (calculateRideFare(distance) === null) {
-    return 'A valid ride distance is required';
   }
 
   return null;
