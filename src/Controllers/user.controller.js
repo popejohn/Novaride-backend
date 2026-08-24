@@ -60,12 +60,16 @@ const saveInstallmentProfile = async (req, res) => {
     const decodedToken = req.user;
     const profileData = req.body;
 
-    // In a real app, you'd save this to a Profile schema or update User
-    await userModel.findByIdAndUpdate(decodedToken.id, {
-      $set: { installmentProfile: profileData, profileCompleted: true }
-    });
+    const updatedUser = await userModel.findByIdAndUpdate(decodedToken.id, {
+      $set: {
+        installmentProfile: profileData,
+        profileCompleted: true,
+        installmentProfileCompleted: true
+      },
+      $addToSet: { role: 'installment' }
+    }, { new: true }).select('-password');
 
-    return res.status(200).json({ message: 'Installment profile saved successfully' });
+    return res.status(200).json({ message: 'Installment profile saved successfully', user: updatedUser });
   } catch (error) {
     console.error('Error saving installment profile:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });

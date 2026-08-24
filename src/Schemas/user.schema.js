@@ -14,7 +14,10 @@ const userSchema = new mongoose.Schema({
   dateOfBirth: { type: Date },
   address: { type: String },
   isSmsProtectionEnabled: { type: Boolean, default: false },
+  // Legacy aggregate flag retained for existing consumers; role-specific flags drive authorization.
   profileCompleted: { type: Boolean, default: false },
+  riderProfileCompleted: { type: Boolean, default: false },
+  installmentProfileCompleted: { type: Boolean, default: false },
   notificationSettings: {
     rideRequests: { type: Boolean, default: true },
     paymentAlerts: { type: Boolean, default: true },

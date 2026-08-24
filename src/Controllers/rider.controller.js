@@ -13,9 +13,6 @@ const getRiderDetails = async (req, res) => {
     // Since authentication is handled by middleware, req.user is set
     const decodedToken = req.user;
 
-    if (!decodedToken.role.includes('rider')) {
-      return res.status(403).json({ message: 'Access denied: Not a rider' });
-    }
     const phone = decodedToken.phone;
 
     // Find the user in the database using the user ID from the token
@@ -26,8 +23,10 @@ const getRiderDetails = async (req, res) => {
       return res.status(404).json({ message: 'Rider not found' });
     }
 
-    // If rider found, return the rider details
-    return res.status(200).json({ rider });
+    const riderProfile = await riderModel.exists({ riderInfo: rider._id });
+
+    // A role alone is insufficient: dashboard access requires the profile setup.
+    return res.status(200).json({ rider, profileCompleted: Boolean(riderProfile) });
   } catch (error) {
     // Handle any errors that may occur
     return res.status(500).json({ message: 'Server error', error: error.message });
@@ -39,10 +38,6 @@ const getRiderDetails = async (req, res) => {
 const createRiderProfile = async (req, res) => {
   try {
     const decodedToken = req.user;
-
-    if (!decodedToken.role.includes('rider')) {
-      return res.status(403).json({ message: 'Access denied: Not a rider' });
-    }
 
     const phone = decodedToken.phone;
     const user = await getUserByPhone(phone);
@@ -69,14 +64,16 @@ const createRiderProfile = async (req, res) => {
     }
 
     // Update user personal details
-    await userModel.findByIdAndUpdate(user._id, {
+    const updatedUser = await userModel.findByIdAndUpdate(user._id, {
       firstname: personal.firstname,
       lastname: personal.lastname,
       phone: personal.phone,
       dateOfBirth: personal.dateOfBirth,
       address: personal.address,
-      profileCompleted: true
-    });
+      profileCompleted: true,
+      riderProfileCompleted: true,
+      $addToSet: { role: 'rider' }
+    }, { new: true }).select('-password');
 
     // Create or update rider profile
     const riderData = {
@@ -114,7 +111,8 @@ const createRiderProfile = async (req, res) => {
 
     return res.status(200).json({
       message: 'Rider profile created/updated successfully',
-      rider: rider
+      rider: rider,
+      user: updatedUser
     });
 
   } catch (error) {
