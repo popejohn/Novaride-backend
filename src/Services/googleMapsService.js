@@ -271,13 +271,13 @@ const getDistanceAndDuration = async (coordinatesParam) => {
         origin: { location: { latLng: { latitude: originLat, longitude: originLng } } },
         destination: { location: { latLng: { latitude: destLat, longitude: destLng } } },
         travelMode: 'DRIVE',
-        routingPreference: 'TRAFFIC_UNAWARE',
+        routingPreference: 'TRAFFIC_AWARE_OPTIMAL',
       },
       {
         headers: {
           'Content-Type': 'application/json',
           'X-Goog-Api-Key': env.GOOGLE_MAPS_API_KEY,
-          'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration',
+          'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.staticDuration',
         },
         timeout: 10000,
       }
@@ -288,12 +288,14 @@ const getDistanceAndDuration = async (coordinatesParam) => {
       const distanceMeters = route.distanceMeters;
       // duration is a string like "1234s" from Routes API
       const durationSeconds = parseInt(route.duration?.replace('s', ''), 10) || 0;
+      const staticDurationSeconds = parseInt(route.staticDuration?.replace('s', ''), 10) || 0;
 
       const normalized = {
         routes: [
           {
             distance: distanceMeters,
             duration: durationSeconds,
+            staticDuration: staticDurationSeconds,
             distance_text: `${(distanceMeters / 1000).toFixed(1)} km`,
             duration_text: `${Math.round(durationSeconds / 60)} mins`,
           },

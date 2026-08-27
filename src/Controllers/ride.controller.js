@@ -17,10 +17,13 @@ const getAuthoritativeRideEstimate = async (pickupCoordinates, destinationCoordi
   );
   const routeDetails = route?.routes?.[0];
   const distanceKm = Number(routeDetails?.distance) / 1000;
-  const etaMinutes = Math.ceil(Number(routeDetails?.duration) / 60);
-  const fare = calculateRideFare(distanceKm);
+  const trafficDurationMinutes = Number(routeDetails?.duration) / 60;
+  const etaMinutes = Math.ceil(trafficDurationMinutes);
+  const staticDurationMinutes = Number(routeDetails?.staticDuration) / 60;
+  const fare = calculateRideFare(distanceKm, trafficDurationMinutes, staticDurationMinutes);
 
-  if (!Number.isFinite(distanceKm) || distanceKm <= 0 || !Number.isFinite(etaMinutes) || etaMinutes <= 0 || fare === null) {
+  if (!Number.isFinite(distanceKm) || distanceKm <= 0 || !Number.isFinite(trafficDurationMinutes) || trafficDurationMinutes <= 0 ||
+    !Number.isFinite(staticDurationMinutes) || staticDurationMinutes <= 0 || fare === null) {
     const error = new Error('Unable to calculate a road route for this ride');
     error.status = 502;
     throw error;

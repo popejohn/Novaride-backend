@@ -1,5 +1,6 @@
 const {
   calculateRideFare,
+  RIDE_PRICING,
   isValidPoint,
   validateRideRequest
 } = require('../src/Services/ridePricing.service');
@@ -17,8 +18,20 @@ describe('ride pricing and request validation', () => {
     destinationCoordinates: { type: 'Point', coordinates: [3.37, 6.53] }
   };
 
-  test('calculates the same fare as the wallet booking UI', () => {
-    expect(calculateRideFare(12.5)).toBe(5625);
+  test('uses the configured base, booking, distance, traffic, and rounding rules', () => {
+    expect(RIDE_PRICING).toMatchObject({
+      baseFare: 1000,
+      farePerKilometer: 200,
+      minimumFare: 1000,
+      bookingFee: 200,
+      trafficDelayRatePerMinute: 20,
+      roundingIncrement: 10,
+      quoteExpiryMinutes: 5
+    });
+    expect(calculateRideFare(0.5, 10, 10)).toBe(1200);
+    expect(calculateRideFare(1, 10, 10)).toBe(1200);
+    expect(calculateRideFare(2.25, 20, 15)).toBe(1550);
+    expect(calculateRideFare(2.276, 20, 15)).toBe(1560);
     expect(calculateRideFare(0)).toBeNull();
   });
 
