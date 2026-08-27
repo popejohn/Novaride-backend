@@ -1,8 +1,9 @@
 const route = require('express').Router();
-const { createRide, getRideById, assignDriver, updateRideStatus, getAvailableRides, acceptRide, rejectRide, getRideHistory, submitRating, submitComplaint } = require('../Controllers/ride.controller');
+const { estimateRideFare, createRide, getRideById, assignDriver, updateRideStatus, getAvailableRides, acceptRide, rejectRide, getRideHistory, submitRating, submitComplaint } = require('../Controllers/ride.controller');
 const { authenticate } = require('../Middlewares/authenticator');
 const { rideLimiter } = require('../Middlewares/rateLimiter');
 
+route.post('/estimate', authenticate, rideLimiter, estimateRideFare);
 route.post('/create-ride', authenticate, rideLimiter, createRide);
 route.get('/history', authenticate, getRideHistory);
 route.get('/available-rides', authenticate, getAvailableRides);

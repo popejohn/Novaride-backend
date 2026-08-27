@@ -9,6 +9,49 @@ const { getDistanceAndDuration } = require('../Services/googleMapsService');
 const isRidePassenger = (ride, userId) => String(ride.user?._id || ride.user) === String(userId);
 const isAssignedRider = (ride, userId) => String(ride.assignedDriver?.riderInfo?._id || ride.assignedDriver?.riderInfo) === String(userId);
 
+const getAuthoritativeRideEstimate = async (pickupCoordinates, destinationCoordinates) => {
+  const [pickupLongitude, pickupLatitude] = pickupCoordinates.coordinates;
+  const [destinationLongitude, destinationLatitude] = destinationCoordinates.coordinates;
+  const route = await getDistanceAndDuration(
+    `${pickupLongitude},${pickupLatitude};${destinationLongitude},${destinationLatitude}`
+  );
+  const routeDetails = route?.routes?.[0];
+  const distanceKm = Number(routeDetails?.distance) / 1000;
+  const trafficDurationMinutes = Number(routeDetails?.duration) / 60;
+  const etaMinutes = Math.ceil(trafficDurationMinutes);
+  const staticDurationMinutes = Number(routeDetails?.staticDuration) / 60;
+  const fare = calculateRideFare(distanceKm, trafficDurationMinutes, staticDurationMinutes);
+
+  if (!Number.isFinite(distanceKm) || distanceKm <= 0 || !Number.isFinite(trafficDurationMinutes) || trafficDurationMinutes <= 0 ||
+    !Number.isFinite(staticDurationMinutes) || staticDurationMinutes <= 0 || fare === null) {
+    const error = new Error('Unable to calculate a road route for this ride');
+    error.status = 502;
+    throw error;
+  }
+
+  return { distanceKm, etaMinutes, fare };
+};
+
+const estimateRideFare = async (req, res) => {
+  try {
+    const { pickupLocation, destination, pickupCoordinates, destinationCoordinates } = req.body;
+    const validationError = validateRideRequest({ pickupLocation, destination, pickupCoordinates, destinationCoordinates });
+    if (validationError) {
+      return res.status(400).json({ message: validationError });
+    }
+
+    const estimate = await getAuthoritativeRideEstimate(pickupCoordinates, destinationCoordinates);
+    return res.status(200).json({
+      distance: Number(estimate.distanceKm.toFixed(2)),
+      eta: estimate.etaMinutes,
+      fare: estimate.fare
+    });
+  } catch (error) {
+    console.error('Error estimating ride fare:', error.message);
+    return res.status(error.status || 502).json({ message: 'Unable to calculate a road fare right now. Please try again.' });
+  }
+};
+
 //controller to create a ride
 const createRide = async (req, res) => {
   try {
@@ -17,8 +60,6 @@ const createRide = async (req, res) => {
     const {
       pickupLocation,
       destination,
-      eta,
-      distance,
       pickupCoordinates,
       destinationCoordinates
     } = req.body;
@@ -26,8 +67,6 @@ const createRide = async (req, res) => {
     const validationError = validateRideRequest({
       pickupLocation,
       destination,
-      eta,
-      distance,
       pickupCoordinates,
       destinationCoordinates
     });
@@ -35,23 +74,11 @@ const createRide = async (req, res) => {
       return res.status(400).json({ message: validationError });
     }
 
-    const [pickupLongitude, pickupLatitude] = pickupCoordinates.coordinates;
-    const [destinationLongitude, destinationLatitude] = destinationCoordinates.coordinates;
-    const route = await getDistanceAndDuration(
-      `${pickupLongitude},${pickupLatitude};${destinationLongitude},${destinationLatitude}`
-    );
-    const routeDetails = route?.routes?.[0];
-    const serverDistance = Number(routeDetails?.distance) / 1000;
-    const serverEta = Math.ceil(Number(routeDetails?.duration) / 60);
-    const calculatedFare = calculateRideFare(serverDistance);
-
-    if (!Number.isFinite(serverDistance) || serverDistance <= 0 || !Number.isFinite(serverEta) || serverEta <= 0 || calculatedFare === null) {
-      return res.status(502).json({ message: 'Unable to calculate a route for this ride' });
-    }
+    const estimate = await getAuthoritativeRideEstimate(pickupCoordinates, destinationCoordinates);
 
     // A ride can only be requested when its wallet-funded fare is available.
     const user = await userModel.findById(decodedToken.id);
-    if (!user || user.wallet < calculatedFare) {
+    if (!user || user.wallet < estimate.fare) {
       return res.status(400).json({ message: 'insufficient fund. Pls fund wallet' });
     }
 
@@ -60,9 +87,9 @@ const createRide = async (req, res) => {
       user: decodedToken.id,
       pickupLocation,
       destination,
-      eta: serverEta,
-      fare: calculatedFare,
-      distance: Number(serverDistance.toFixed(2)),
+      eta: estimate.etaMinutes,
+      fare: estimate.fare,
+      distance: Number(estimate.distanceKm.toFixed(2)),
       pickupCoordinates,
       destinationCoordinates,
       rideStatus: 'pending',
@@ -90,6 +117,9 @@ const createRide = async (req, res) => {
 
   } catch (error) {
     console.error('Error creating ride:', error);
+    if (error.status === 502) {
+      return res.status(502).json({ message: 'Unable to calculate a road fare right now. Please try again.' });
+    }
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -601,4 +631,4 @@ const submitComplaint = async (req, res) => {
   }
 };
 
-module.exports = { createRide, getRideById, assignDriver, updateRideStatus, getAvailableRides, acceptRide, rejectRide, getRideHistory, submitRating, submitComplaint };
+module.exports = { estimateRideFare, createRide, getRideById, assignDriver, updateRideStatus, getAvailableRides, acceptRide, rejectRide, getRideHistory, submitRating, submitComplaint };
