@@ -437,6 +437,8 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 app.get('/', (req, res) => {
   res.send('API is running with Socket.io...');
 });
+const { startInstallmentScheduler } = require('./src/Services/installmentScheduler');
+
 // Start the server
 const PORT = process.env.PORT || 5000;
 setInterval(() => {
@@ -450,6 +452,9 @@ setInterval(() => {
     console.error('Stale rider sweep failed:', error.message);
   });
 }, HEARTBEAT_INTERVAL_MS);
+
+// Initialize installment schedule monitoring
+startInstallmentScheduler();
 
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

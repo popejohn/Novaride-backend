@@ -11,6 +11,8 @@ const locationRoutes = require('./location.routes');
 const supportRoutes = require('./support.routes');
 
 
+const uploadRoutes = require('./upload.routes');
+
 // Health check routes (no auth required)
 router.use('/health', healthRoutes);
 
@@ -25,6 +27,9 @@ router.use('/ride', rideRoutes);
 
 // User routes
 router.use('/user', userRoutes);
+
+// Upload routes
+router.use('/upload', uploadRoutes);
 
 // Paystack routes
 router.use('/paystack', paystackRoutes);

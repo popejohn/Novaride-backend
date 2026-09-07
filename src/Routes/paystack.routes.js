@@ -5,6 +5,7 @@ const { authenticate } = require('../Middlewares/authenticator');
 const { paymentLimiter } = require('../Middlewares/rateLimiter');
 
 router.post('/verify-wallet-funding', authenticate, paymentLimiter, paystackController.verifyWalletFunding);
+router.post('/initialize-installment-payment', authenticate, paymentLimiter, paystackController.initializeInstallmentPayment);
 router.post('/verify-installment-payment', authenticate, paymentLimiter, paystackController.verifyInstallmentPayment);
 
 module.exports = router;
