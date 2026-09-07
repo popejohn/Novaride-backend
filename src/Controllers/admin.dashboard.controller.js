@@ -5,6 +5,9 @@ const RideDetails = require('../Schemas/rideDetails.mongoose.schema.js');
 const Installment = require('../Schemas/installment.mongoose.schema.js');
 const Transaction = require('../Schemas/transaction.mongoose.schema.js');
 const Admin = require('../Models/admin.model');
+const INSTALLMENT_CONSTANTS = require('../Configs/installment.constants');
+const { getNextBusinessDay, calculateExpectedCompletionDate } = require('../Services/installment.service');
+const { sendEmail } = require('../Services/installmentNotification.service');
 
 
 
@@ -208,11 +211,137 @@ const getPartners = async (req, res) => {
     res.set('Pragma', 'no-cache');
     res.set('Expires', '0');
 
-    const installments = await Installment.find().populate('user', 'firstname lastname email phone wallet installmentPlan');
+    const installments = await Installment.find()
+      .populate('user', 'firstname lastname email phone wallet installmentProfile role')
+      .sort({ createdAt: -1 });
     return res.status(200).json(installments);
   } catch (error) {
     console.error('Error fetching partners list:', error);
     return res.status(500).json({ message: 'Server error fetching partners' });
+  }
+};
+
+const getActivityLog = async (req, res) => {
+  try {
+    // Disable caching for real-time data
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+
+    const limit = Math.min(parseInt(req.query.limit, 10) || 40, 100);
+    const fetchCount = 25;
+
+    const [recentUsers, recentRides, recentTransactions, recentInstallments] = await Promise.all([
+      User.find().select('firstname lastname role createdAt').sort({ createdAt: -1 }).limit(fetchCount),
+      RideDetails.find().populate('user', 'firstname lastname').select('user rideStatus pickupLocation destination createdAt').sort({ createdAt: -1 }).limit(fetchCount),
+      Transaction.find().populate('user', 'firstname lastname').select('user type amount description status createdAt').sort({ createdAt: -1 }).limit(fetchCount),
+      Installment.find().populate('user', 'firstname lastname').select('user paymentsLog vehicleName').sort({ updatedAt: -1 }).limit(fetchCount)
+    ]);
+
+    const activities = [];
+
+    recentUsers.forEach(u => {
+      activities.push({
+        type: 'signup',
+        label: `New ${u.role} registered`,
+        detail: `${u.firstname || ''} ${u.lastname || ''}`.trim() || 'Unnamed user',
+        timestamp: u.createdAt
+      });
+    });
+
+    recentRides.forEach(r => {
+      const passengerName = r.user ? `${r.user.firstname || ''} ${r.user.lastname || ''}`.trim() : 'A passenger';
+      activities.push({
+        type: 'ride',
+        label: `Ride ${r.rideStatus}`,
+        detail: `${passengerName} — ${r.pickupLocation || 'Pickup'} → ${r.destination || 'Dropoff'}`,
+        timestamp: r.createdAt
+      });
+    });
+
+    recentTransactions.forEach(t => {
+      const userName = t.user ? `${t.user.firstname || ''} ${t.user.lastname || ''}`.trim() : 'A user';
+      activities.push({
+        type: 'transaction',
+        label: `${t.type} - ₦${(t.amount || 0).toLocaleString()}`,
+        detail: `${userName}: ${t.description}`,
+        timestamp: t.createdAt
+      });
+    });
+
+    recentInstallments.forEach(inst => {
+      const userName = inst.user ? `${inst.user.firstname || ''} ${inst.user.lastname || ''}`.trim() : 'A partner';
+      (inst.paymentsLog || []).forEach(log => {
+        activities.push({
+          type: 'installment',
+          label: log.type === 'deposit' ? 'Installment deposit paid' : 'Daily installment paid',
+          detail: `${userName} paid ₦${(log.amount || 0).toLocaleString()} for ${inst.vehicleName || 'Maruwa'}`,
+          timestamp: log.paidAt || log.date
+        });
+      });
+    });
+
+    activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    return res.status(200).json({ activities: activities.slice(0, limit) });
+  } catch (error) {
+    console.error('Error fetching activity log:', error);
+    return res.status(500).json({ message: 'Server error fetching activity log' });
+  }
+};
+
+const assignVehicle = async (req, res) => {
+  try {    const { installmentId, vehicleName, vehiclePlate, vehicleType, vehicleModel, vehicleColor, vehicleOwnership, vehicleImage } = req.body;
+
+    if (!installmentId || !vehiclePlate) {
+      return res.status(400).json({ message: 'installmentId and vehiclePlate are required' });
+    }
+
+    const installment = await Installment.findById(installmentId).populate('user', 'firstname lastname email');
+    if (!installment) {
+      return res.status(404).json({ message: 'Installment plan not found' });
+    }
+
+    if (!installment.depositPaid) {
+      return res.status(400).json({ message: 'Cannot assign a vehicle before the initial deposit is paid' });
+    }
+
+    if (vehicleName) installment.vehicleName = vehicleName;
+    installment.vehiclePlate = vehiclePlate;
+    if (vehicleType) installment.vehicleType = vehicleType;
+    if (vehicleModel) installment.vehicleModel = vehicleModel;
+    if (vehicleColor) installment.vehicleColor = vehicleColor;
+    if (vehicleOwnership) installment.vehicleOwnership = vehicleOwnership;
+    if (vehicleImage) installment.vehicleImage = vehicleImage;
+
+    const now = new Date();
+    installment.vehicleAssigned = true;
+    installment.vehicleAssignedAt = now;
+    installment.status = INSTALLMENT_CONSTANTS.STATUS.ACTIVE;
+    installment.startDate = now;
+    installment.nextPaymentDate = getNextBusinessDay(now);
+    installment.expectedCompletionDate = calculateExpectedCompletionDate(now);
+    installment.completedDays = 0;
+    installment.consecutiveDefaults = 0;
+
+    await installment.save();
+
+    if (installment.user?.email) {
+      sendEmail(
+        installment.user.email,
+        'NovaRide: Your Maruwa Has Been Assigned - Plan Active!',
+        `<div style="font-family: Arial; padding: 20px; background: #111; color: #fff; border-radius: 10px;">
+          <h2 style="color: #f97316;">🛺 Vehicle Assigned!</h2>
+          <p>Hello ${installment.user.firstname}, your Maruwa (<b>${installment.vehicleName}</b>, Plate: <b>${installment.vehiclePlate}</b>) has been assigned.</p>
+          <p>Your installment plan is now <b>ACTIVE</b>. First scheduled daily installment of ₦18,000 is due on <b>${installment.nextPaymentDate.toDateString()}</b> (Mon-Fri).</p>
+        </div>`
+      ).catch(console.error);
+    }
+
+    return res.status(200).json({ message: 'Vehicle assigned successfully. Installment plan is now active.', installment });
+  } catch (error) {
+    console.error('Error assigning vehicle:', error);
+    return res.status(500).json({ message: 'Server error assigning vehicle' });
   }
 };
 
@@ -244,5 +373,7 @@ module.exports = {
   getRiders,
   getPassengers,
   getPartners,
+  getActivityLog,
+  assignVehicle,
   getRidesList
 };

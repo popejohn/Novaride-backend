@@ -34,18 +34,43 @@ const userSchema = new mongoose.Schema({
   // Installment-specific fields
   installmentProfile: {
     personal: {
+      firstname: { type: String },
+      lastname: { type: String },
+      email: { type: String },
+      phone: { type: String },
       dateOfBirth: { type: Date },
       gender: { type: String },
       maritalStatus: { type: String },
       address: { type: String },
       city: { type: String },
-      state: { type: String }
+      state: { type: String },
+      stateOfOrigin: { type: String },
+      lga: { type: String }
+    },
+    nextOfKin: {
+      name: { type: String },
+      relationship: { type: String },
+      phone: { type: String },
+      address: { type: String }
+    },
+    vehicle: {
+      vehicleType: { type: String, default: 'Tricycle' },
+      plateNumber: { type: String, default: 'PENDING' },
+      modelMake: { type: String, default: 'TVS King 200cc' },
+      color: { type: String, default: 'Yellow' },
+      ownership: { type: String, default: 'Company' }
     },
     guarantors: [{
       name: { type: String },
       phone: { type: String },
       relationship: { type: String },
+      homeAddress: { type: String },
       address: { type: String },
+      occupation: { type: String },
+      officeAddress: { type: String },
+      meansOfId: { type: String },
+      idNumber: { type: String },
+      photoUrl: { type: String },
       employment: {
         employerName: { type: String },
         jobTitle: { type: String },
@@ -53,13 +78,22 @@ const userSchema = new mongoose.Schema({
       }
     }],
     documents: {
+      applicantPhotoUrl: { type: String },
       idType: { type: String },
       idNumber: { type: String },
+      idDocumentUrl: { type: String },
+      driverLicenseNumber: { type: String },
+      driverLicenseUrl: { type: String },
       idExpiry: { type: Date },
       bvn: { type: String },
       nin: { type: String },
       isBVNVerified: { type: Boolean, default: false },
       isNINVerified: { type: Boolean, default: false }
+    },
+    terms: {
+      accepted: { type: Boolean, default: false },
+      acceptedAt: { type: Date },
+      termsVersion: { type: String }
     },
     references: [{
       name: { type: String },
@@ -76,12 +110,14 @@ const userSchema = new mongoose.Schema({
     planName: { type: String },
     depositAmount: { type: Number },
     totalAmount: { type: Number },
+    dailyInstallment: { type: Number },
     monthlyPayment: { type: Number },
     remainingMonths: { type: Number }
   },
   installmentHistory: [{
     date: { type: Date, default: Date.now },
     amount: { type: Number },
+    type: { type: String, default: 'installment' },
     status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending' },
     transactionId: { type: String }
   }]

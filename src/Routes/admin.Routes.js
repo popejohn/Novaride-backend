@@ -18,6 +18,8 @@ const {
   getRiders,
   getPassengers,
   getPartners,
+  assignVehicle,
+  getActivityLog,
   getRidesList
 } = require('../Controllers/admin.dashboard.controller');
 
@@ -41,6 +43,8 @@ router.get('/dashboard/stats', authenticateAdmin, getStats);
 router.get('/dashboard/riders', authenticateAdmin, getRiders);
 router.get('/dashboard/passengers', authenticateAdmin, getPassengers);
 router.get('/dashboard/partners', authenticateAdmin, getPartners);
+router.post('/dashboard/assign-vehicle', authenticateAdmin, assignVehicle);
+router.get('/dashboard/activity-log', authenticateAdmin, getActivityLog);
 router.get('/dashboard/rides', authenticateAdmin, getRidesList);
 router.get('/wallet/logs', authenticateAdmin, getWalletLogs);
 router.post('/wallet/fund', authenticateAdmin, fundUserWallet);
