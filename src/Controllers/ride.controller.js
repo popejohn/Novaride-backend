@@ -156,7 +156,7 @@ const getRideById = async (req, res) => {
 const assignDriver = async (req, res) => {
   try {
     const { id } = req.params;
-    const { driverId } = req.body;
+    const { driverId, addedFare } = req.body;
     const decodedToken = req.user;
 
     const rider = await riderModel.findOne({ _id: driverId, isAvailable: true, isVerified: true });
@@ -164,19 +164,8 @@ const assignDriver = async (req, res) => {
       return res.status(400).json({ message: 'Selected rider is no longer available' });
     }
 
-    const ride = await rideDetailsModel.findOneAndUpdate(
-      { _id: id, user: decodedToken.id, rideStatus: 'pending' },
-      {
-        $set: {
-          assignedDriver: rider._id,
-          rideStatus: 'waiting_for_acceptance',
-          expiresAt: buildRideExpiry(new Date(), getRideTimeoutMs())
-        }
-      },
-      { new: true }
-    );
-
-    if (!ride) {
+    const currentRide = await rideDetailsModel.findOne({ _id: id, user: decodedToken.id, rideStatus: 'pending' });
+    if (!currentRide) {
       const existingRide = await rideDetailsModel.findOne({ _id: id, user: decodedToken.id });
       if (existingRide?.rideStatus === 'waiting_for_acceptance' && String(existingRide.assignedDriver) === String(rider._id)) {
         return res.status(200).json({
@@ -191,6 +180,37 @@ const assignDriver = async (req, res) => {
           : 'This ride no longer exists or is not yours'
       });
     }
+
+    const extraFare = Number(addedFare) > 0 ? Math.round(Number(addedFare)) : 0;
+    const baseFare = currentRide.baseFare || currentRide.fare;
+    const finalFare = baseFare + extraFare;
+
+    if (extraFare > 0) {
+      const user = await userModel.findById(decodedToken.id);
+      if (!user || user.wallet < finalFare) {
+        return res.status(400).json({
+          message: `Insufficient wallet balance. Total fare with distance surcharge is ₦${finalFare.toLocaleString()}, but your balance is ₦${(user?.wallet || 0).toLocaleString()}. Please fund your wallet.`
+        });
+      }
+    }
+
+    const updateFields = {
+      assignedDriver: rider._id,
+      rideStatus: 'waiting_for_acceptance',
+      expiresAt: buildRideExpiry(new Date(), getRideTimeoutMs())
+    };
+
+    if (extraFare > 0) {
+      updateFields.baseFare = baseFare;
+      updateFields.addedFare = extraFare;
+      updateFields.fare = finalFare;
+    }
+
+    const ride = await rideDetailsModel.findOneAndUpdate(
+      { _id: id, user: decodedToken.id, rideStatus: 'pending' },
+      { $set: updateFields },
+      { new: true }
+    );
 
     await ride.populate('user', 'firstname lastname profilePic');
 

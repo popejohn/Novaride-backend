@@ -262,10 +262,22 @@ const updateRiderStatus = async (req, res) => {
   }
 };
 
+const calculateDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return parseFloat((R * c).toFixed(1));
+};
+
 //controller to get nearby drivers
 const getNearbyDrivers = async (req, res) => {
   try {
-    const { lat, lng } = req.query;
+    const { lat, lng, expandSearch, maxDistance } = req.query;
     const latitude = Number(lat);
     const longitude = Number(lng);
 
@@ -281,24 +293,55 @@ const getNearbyDrivers = async (req, res) => {
       Expires: '0'
     });
 
+    const isExpanded = expandSearch === 'true' || expandSearch === true;
+    const searchDistanceMeters = isExpanded
+      ? (Number(maxDistance) && Number(maxDistance) > 5000 ? Number(maxDistance) : 50000)
+      : (Number(maxDistance) || MAX_NEARBY_RIDER_DISTANCE_METERS);
+
+    const nearQuery = {
+      $geometry: {
+        type: 'Point',
+        coordinates: [longitude, latitude]
+      }
+    };
+
+    if (searchDistanceMeters > 0) {
+      nearQuery.$maxDistance = searchDistanceMeters;
+    }
+
     // A fresh server heartbeat is the connection proof. socketId is only an
     // ephemeral diagnostic value and may lag a successful socket reconnect.
     const drivers = await riderModel.find({
       ...getActiveRiderMatchQuery(new Date()),
       location: {
-        $near: {
-          $geometry: {
-            type: 'Point',
-            coordinates: [longitude, latitude]
-          },
-          $maxDistance: MAX_NEARBY_RIDER_DISTANCE_METERS
-        }
+        $near: nearQuery
       }
-    }).populate('riderInfo', 'firstname lastname profilePic');
+    })
+    .limit(isExpanded ? 10 : 20)
+    .populate('riderInfo', 'firstname lastname profilePic');
+
+    const driversWithDetails = drivers.map(driver => {
+      const driverObj = driver.toObject();
+      let distanceKm = 1.2;
+      if (Array.isArray(driver.location?.coordinates) && driver.location.coordinates.length === 2) {
+        const [dLng, dLat] = driver.location.coordinates;
+        distanceKm = calculateDistanceKm(latitude, longitude, dLat, dLng);
+      }
+      
+      const isOutsideVicinity = distanceKm > 5;
+      // Added funds: #500 per km
+      const addedFare = isOutsideVicinity ? Math.round(distanceKm * 500) : 0;
+
+      driverObj.distance = distanceKm;
+      driverObj.isOutsideVicinity = isOutsideVicinity;
+      driverObj.addedFare = addedFare;
+      return driverObj;
+    });
 
     return res.status(200).json({
       message: 'Nearby drivers fetched successfully',
-      drivers: drivers
+      drivers: driversWithDetails,
+      isExpanded
     });
 
   } catch (error) {

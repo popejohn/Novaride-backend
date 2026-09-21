@@ -6,6 +6,9 @@ const rideDetailsSchema = new mongoose.Schema({
   destination: { type: String, required: true },
   eta: { type: Number, required: true }, // in minutes
   fare: { type: Number, required: true },
+  baseFare: { type: Number },
+  addedFare: { type: Number, default: 0 },
+  driverDistance: { type: Number },
   distance: { type: Number, required: true }, // in km
   rideStatus: {
     type: String,
