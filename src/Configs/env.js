@@ -37,7 +37,7 @@ const env = cleanEnv(process.env, {
   RESEND_API_KEY: str({ default: '' }),
   RESEND_FROM_EMAIL: str({ default: '' }),
   BASE_URL: str({ default: '' }),
-  RIDE_REQUEST_TIMEOUT_MINUTES: num({ default: 5 }),
+  RIDE_REQUEST_TIMEOUT_MINUTES: num({ default: 10 }),
 });
 
 module.exports = env;
