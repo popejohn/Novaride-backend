@@ -6,7 +6,7 @@ const INACTIVE_RIDE_STATUSES = ['accepted', 'at_pickup', 'starting', 'in_progres
 
 const isActiveRideStatus = (status) => ACTIVE_RIDE_STATUSES.includes(status);
 
-const getRideTimeoutMs = (timeoutMinutes = env.RIDE_REQUEST_TIMEOUT_MINUTES || 5) => Number(timeoutMinutes) * 60 * 1000;
+const getRideTimeoutMs = (timeoutMinutes = env.RIDE_REQUEST_TIMEOUT_MINUTES || 10) => Number(timeoutMinutes) * 60 * 1000;
 
 const buildRideExpiry = (createdAt = new Date(), timeoutMs = getRideTimeoutMs()) => {
   const reference = createdAt ? new Date(createdAt) : new Date();
